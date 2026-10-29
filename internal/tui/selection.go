@@ -63,7 +63,7 @@ func (m Model) selectedText() string {
 		start, end := m.selection.span(line, y)
 		if end > start {
 			// Cut unpadded content, preserving selected spaces and blank-row newlines.
-			selected = append(selected, ansi.Cut(ansi.Strip(content[y]), start, end))
+			selected = append(selected, ansi.Cut(ansi.Strip(content[y]), max(start, m.margin()), end))
 		}
 	}
 	return strings.Join(selected, "\n")

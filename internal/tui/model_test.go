@@ -66,7 +66,7 @@ func TestConstrainedScreens(t *testing.T) {
 		model = resize(t, model, size[0], size[1])
 		if size == [2]int{20, 10} {
 			lines := strings.Split(ansi.Strip(model.View().Content), "\n")
-			if strings.TrimSpace(lines[7]) != "› Ask Codex to do an" {
+			if strings.TrimSpace(lines[7]) != "› Ask Codex to d" {
 				t.Fatalf("unexpected truncated input: %q", lines[7])
 			}
 			if strings.Contains(lines[9], "weekly") {
@@ -98,10 +98,10 @@ func TestDirectoryControlsAreVisibleAndCopyable(t *testing.T) {
 	const visible = `/项目/a\nb\tc\r\x1b[31m\u2028`
 	model := resize(t, tui.New(path), 80, 10)
 	lines := strings.Split(ansi.Strip(model.View().Content), "\n")
-	if strings.TrimRight(lines[2], " ") != "   "+visible {
+	if strings.TrimRight(lines[2], " ") != "  "+visible {
 		t.Fatalf("directory = %q", lines[2])
 	}
-	model = drag(t, model, [2]int{3, 2}, [2]int{79, 2})
+	model = drag(t, model, [2]int{2, 2}, [2]int{79, 2})
 	copySelection(t, model, visible)
 	resize(t, model, 20, 10)
 }

@@ -33,10 +33,10 @@ func inputLine(t *testing.T, model tea.Model) string {
 	if !utf8.ValidString(line) {
 		t.Fatal("input contains broken UTF-8")
 	}
-	return strings.TrimRight(line, " ")
+	return strings.TrimRight(strings.TrimPrefix(line, "  "), " ")
 }
 
-func TestInputEditingAndNoSubmission(t *testing.T) {
+func TestInputEditingAndCopyWithoutSelection(t *testing.T) {
 	model := resize(t, tui.New("/workspace"), 100, 24)
 	model = edit(t, model, tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if got := inputLine(t, model); got != "› Ask Codex to do anything" {
@@ -49,10 +49,10 @@ func TestInputEditingAndNoSubmission(t *testing.T) {
 		t.Fatalf("typed input = %q", got)
 	}
 	before := model.View().Content
-	for _, key := range []tea.KeyPressMsg{{Code: tea.KeyEnter}, {Code: 'c', Mod: tea.ModCtrl}} {
+	for _, key := range []tea.KeyPressMsg{{Code: 'c', Mod: tea.ModCtrl}} {
 		model = edit(t, model, key)
 		if model.View().Content != before {
-			t.Fatal("Enter or Ctrl+C changed input or produced a reply")
+			t.Fatal("Ctrl+C changed input or produced a reply")
 		}
 	}
 	for _, want := range []string{"Hello 世", "Hello ", "Hello", "Hell", "Hel", "He", "H", "Ask Codex to do anything"} {
@@ -107,7 +107,7 @@ func TestCaretEditing(t *testing.T) {
 	if got := inputLine(t, model); got != "› AxB" {
 		t.Fatalf("caret edits = %q", got)
 	}
-	if model.View().Cursor.X != 5 {
+	if model.View().Cursor.X != 7 {
 		t.Fatal("caret did not follow the edits")
 	}
 }

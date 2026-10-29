@@ -61,12 +61,12 @@ func TestSelectionCopyRegionsAndDirections(t *testing.T) {
 		from, to [2]int
 		want     string
 	}{
-		{"title", [2]int{3, 1}, [2]int{14, 1}, "OpenAI Codex"},
-		{"path", [2]int{3, 2}, [2]int{9, 2}, "/项目"},
-		{"input", [2]int{2, 7}, [2]int{10, 7}, "A中👩‍💻e\u0301B"},
+		{"title", [2]int{5, 1}, [2]int{16, 1}, "OpenAI Codex"},
+		{"path", [2]int{2, 2}, [2]int{6, 2}, "/项目"},
+		{"input", [2]int{4, 7}, [2]int{12, 7}, "A中👩‍💻e\u0301B"},
 		{"status", [2]int{2, 9}, [2]int{21, 9}, "GPT-6.1 Terra medium"},
-		{"cross line", [2]int{3, 1}, [2]int{7, 2}, "OpenAI Codex (v0.165.0)\n   /项目"},
-		{"blank rows", [2]int{3, 2}, [2]int{2, 7}, "/项目\n\n\n\n\n› A"},
+		{"cross line", [2]int{5, 1}, [2]int{6, 2}, "OpenAI Codex (v0.165.0)\n/项目"},
+		{"blank rows", [2]int{2, 2}, [2]int{4, 7}, "/项目\n\n\n\n\n› A"},
 	} {
 		for _, reverse := range []bool{false, true} {
 			name := tc.name
@@ -112,7 +112,7 @@ func TestSelectionWideCellBoundaries(t *testing.T) {
 		t.Run(tc.text, func(t *testing.T) {
 			model := resize(t, tui.New("/workspace"), 40, 10)
 			model = edit(t, model, tea.PasteMsg{Content: tc.text})
-			model = drag(t, model, [2]int{tc.from, 7}, [2]int{tc.to, 7})
+			model = drag(t, model, [2]int{tc.from + 2, 7}, [2]int{tc.to + 2, 7})
 			copySelection(t, model, tc.want)
 		})
 	}
@@ -134,19 +134,16 @@ func TestSelectionClearingAndClamping(t *testing.T) {
 	}
 	model := resize(t, tui.New("/workspace"), 20, 10)
 	model = drag(t, model, [2]int{-10, -1}, [2]int{200, 100})
-	lines := strings.Split(ansi.Strip(model.View().Content), "\n")
-	for i := range lines {
-		lines[i] = strings.TrimRight(lines[i], " ")
-	}
-	copySelection(t, model, strings.Join(lines, "\n"))
+	// The header's final space is real truncated content, not layout padding.
+	copySelection(t, model, "\n>_ OpenAI Codex \n/workspace\n\n\n\n\n› Ask Codex to d\n\nGPT-6.1 Terra me")
 }
 
 func TestSelectionCopiesVisibleScrolledInput(t *testing.T) {
 	model := resize(t, tui.New("/workspace"), 20, 10)
 	model = edit(t, model, tea.PasteMsg{Content: strings.Repeat("中文", 30) + "TAIL"})
 	line := strings.Split(ansi.Strip(model.View().Content), "\n")[7]
-	model = drag(t, model, [2]int{2, 7}, [2]int{19, 7})
-	copySelection(t, model, strings.TrimRight(ansi.Cut(line, 2, 20), " "))
+	model = drag(t, model, [2]int{4, 7}, [2]int{17, 7})
+	copySelection(t, model, strings.TrimRight(ansi.Cut(line, 4, 18), " "))
 }
 
 func TestCopyPreservesContentSpaces(t *testing.T) {
@@ -162,7 +159,7 @@ func TestCopyPreservesContentSpaces(t *testing.T) {
 		for _, reverse := range []bool{false, true} {
 			model := resize(t, tui.New("/workspace"), 40, 10)
 			model = edit(t, model, tea.PasteMsg{Content: tc.text})
-			from, to := [2]int{2, 7}, [2]int{tc.end, 7}
+			from, to := [2]int{4, 7}, [2]int{tc.end + 2, 7}
 			if reverse {
 				from, to = to, from
 			}

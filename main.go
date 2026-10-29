@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -9,9 +10,13 @@ import (
 )
 
 func main() {
+	taskID := flag.String("task-id", "", "attach to an existing task")
+	flag.Parse()
 	directory, err := os.Getwd()
 	if err == nil {
-		_, err = tea.NewProgram(tui.New(directory)).Run()
+		model := tui.NewWithTask(directory, tui.TaskOptions{TaskID: *taskID})
+		defer model.Close()
+		_, err = tea.NewProgram(model).Run()
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "codex-tui:", err)

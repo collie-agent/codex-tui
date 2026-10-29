@@ -1,0 +1,82 @@
+package tui
+
+import (
+	"encoding/json"
+	"strconv"
+	"strings"
+	"unicode"
+)
+
+// Remote controls are escaped before any styling, wrapping or clipboard access.
+func safeRemote(text string) string {
+	var out strings.Builder
+	for _, r := range text {
+		if r != '\n' && (unicode.IsControl(r) || r == '\u2028' || r == '\u2029') {
+			q := strconv.QuoteRune(r)
+			out.WriteString(q[1 : len(q)-1])
+		} else {
+			out.WriteRune(r)
+		}
+	}
+	return out.String()
+}
+func (m *Model) applyEvent(event taskEvent) {
+	var delta struct{ Text string }
+	switch event.Type {
+	case "text_delta", "text":
+		if err := json.Unmarshal([]byte(event.Delta), &delta); err != nil {
+			m.connection = "Connection error: invalid text Delta"
+			m.Close()
+			return
+		}
+		if event.Type == "text_delta" {
+			if !m.streaming || m.textInterrupted {
+				m.appendResponse("")
+				m.streaming = true
+				m.textInterrupted = false
+			}
+			m.responses[len(m.responses)-1] += delta.Text
+		} else {
+			// A full text closes only the current streamed response. Equal text in
+			// later rounds remains a legitimate new response, never global deduplication.
+			// Without response IDs, only a final text extending the pending
+			// delta can cross a call boundary; a different text starts a new unit.
+			if m.streaming && (!m.textInterrupted || strings.HasPrefix(delta.Text, m.responses[len(m.responses)-1])) {
+				m.responses[len(m.responses)-1] = delta.Text
+			} else {
+				m.appendResponse(delta.Text)
+			}
+			m.streaming = false
+			m.textInterrupted = false
+		}
+	case "tool_call", "tool_result", "tool_error":
+		// A call ends the contiguous delta run, but its final text may arrive
+		// after tool events. Retain that merge target until another text starts.
+		if event.Type == "tool_call" && m.streaming {
+			m.textInterrupted = true
+		}
+		m.applyTool(event)
+	case "usage":
+		// Usage precedes the final text in the server stream; keep its merge target.
+	case "task_completed":
+		m.completed = true
+		m.connection = "Completed"
+	}
+}
+func (m *Model) appendResponse(text string) {
+	if len(m.output) == 0 {
+		for i := range m.responses {
+			m.output = append(m.output, outputItem{response: i})
+		}
+	}
+	m.responses = append(m.responses, text)
+	m.output = append(m.output, outputItem{response: len(m.responses) - 1})
+}
+func (m Model) outputRows() []string {
+	layout := m.outputLayout()
+	rows := make([]string, len(layout))
+	for i, row := range layout {
+		rows[i] = row.text
+	}
+	return rows
+}
