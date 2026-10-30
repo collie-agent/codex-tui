@@ -38,10 +38,10 @@ func TestAllTextUsesTwoCellMarginsAndInputCaret(t *testing.T) {
 
 func TestToolRegionsHaveSingleBlankSeparatorsAndWrapWithinMargins(t *testing.T) {
 	m, _ := toolModel(t,
-		toolFrame("text", `{"text":"before"}`),
+		toolFrame("answer_delta", `{"text":"before"}`),
 		toolFrame("tool_call", `{"call_id":"a","name":"read_file","arguments":{"path":"中文🙂abcdefghijk"}}`),
 		toolFrame("tool_call", `{"call_id":"b","name":"list_dir","arguments":{"path":"."}}`),
-		toolFrame("text", `{"text":"after"}`),
+		toolFrame("answer_delta", `{"text":"after"}`),
 	)
 	rows := strings.Split(visible(m), "\n")
 	if strings.TrimSpace(rows[1]) != "before" || strings.TrimSpace(rows[2]) != "" || !strings.Contains(rows[3], "+ expand") || !strings.Contains(rows[4], "read_file") || !strings.Contains(rows[5], "list_dir") || strings.TrimSpace(rows[6]) != "" || strings.TrimSpace(rows[7]) != "after" {

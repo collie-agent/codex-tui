@@ -37,6 +37,23 @@ func receive(t *testing.T, cmd tea.Cmd) tea.Msg {
 		return nil
 	}
 }
+func TestAttachRendersNonStreamingAnswer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, event("text", "你好 \"世界\""), event("task_completed", ""))
+	}))
+	defer server.Close()
+	attached := tui.NewWithTask("/work", tui.TaskOptions{TaskID: "task", ServerURL: server.URL})
+	defer attached.Close()
+	var model tea.Model = resize(t, attached, 100, 12)
+	cmd := model.Init()
+	for i := 0; i < 3; i++ {
+		model, cmd = model.Update(receive(t, cmd))
+	}
+	view := ansi.Strip(model.View().Content)
+	if strings.Count(view, `你好 "世界"`) != 1 {
+		t.Fatalf("non-streaming answer missing or duplicated: %s", view)
+	}
+}
 func TestAttachReplayAndCompletion(t *testing.T) {
 	closed := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +61,7 @@ func TestAttachReplayAndCompletion(t *testing.T) {
 			t.Error("incorrect subscription request")
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		frames := []string{event("text_delta", "你好 "), event("text_delta", "world"), event("text", "你好 world"), event("text", "你好 world"), event("usage", ""), event("task_completed", "")}
+		frames := []string{event("answer_delta", "你好 "), event("answer_delta", "world"), event("usage", ""), event("task_completed", "")}
 		frames[0] = ": heartbeat\r\n" + strings.Replace(frames[0], `,"ID"`, ",\r\ndata: "+`"ID"`, 1)
 		frames[1] = strings.ReplaceAll(frames[1], "\r\n", "\r")
 		for _, frame := range frames {
@@ -61,7 +78,7 @@ func TestAttachReplayAndCompletion(t *testing.T) {
 	defer attached.Close()
 	var model tea.Model = resize(t, attached, 100, 12)
 	cmd := model.Init()
-	for i := 0; i < 7; i++ {
+	for i := 0; i < 5; i++ {
 		model, cmd = model.Update(receive(t, cmd))
 		if i == 1 && !strings.Contains(ansi.Strip(model.View().Content), "你好") {
 			t.Fatal("delta was not rendered before full text")
@@ -71,7 +88,7 @@ func TestAttachReplayAndCompletion(t *testing.T) {
 		t.Fatal("completed subscription kept reading")
 	}
 	view := ansi.Strip(model.View().Content)
-	if strings.Count(view, "你好 world") != 2 || !strings.Contains(view, "Completed") || !strings.Contains(view, "user-task") {
+	if strings.Count(view, "你好 world") != 1 || !strings.Contains(view, "Completed") || !strings.Contains(view, "user-task") {
 		t.Fatalf("incorrect replay: %s", view)
 	}
 	select {
@@ -88,7 +105,7 @@ func TestAttachDisconnectAndExit(t *testing.T) {
 		t.Run(fmt.Sprint(quit), func(t *testing.T) {
 			closed := make(chan struct{})
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				fmt.Fprint(w, event("text", "safe\x1b[2J\n下一行"), event("usage", ""), event("tool_error", ""))
+				fmt.Fprint(w, event("answer_delta", "safe\x1b[2J\n下一行"), event("usage", ""), event("tool_error", ""))
 				w.(http.Flusher).Flush()
 				if quit {
 					<-r.Context().Done()

@@ -13,7 +13,7 @@ func TestUsageBetweenDeltaAndFinalText(t *testing.T) {
 	m := New(".")
 	m.width, m.height, m.taskID = 80, 20, "test"
 	for _, event := range []taskEvent{
-		{Type: "text_delta", Delta: `{"text":"hello"}`},
+		{Type: "answer_delta", Delta: `{"text":"hello"}`},
 		{Type: "usage", Delta: `{"status":"completed"}`},
 		{Type: "text", Delta: `{"text":"hello"}`},
 	} {
@@ -23,9 +23,25 @@ func TestUsageBetweenDeltaAndFinalText(t *testing.T) {
 		t.Fatalf("response rendered %d times", got)
 	}
 	// Identical text in a later response must remain visible as a separate response.
-	m.applyEvent(taskEvent{Type: "text", Delta: `{"text":"hello"}`})
+	m.applyEvent(taskEvent{Type: "answer_delta", Delta: `{"text":"hello"}`})
 	if got := strings.Count(ansi.Strip(m.View().Content), "hello"); got != 2 {
 		t.Fatalf("later response lost: %d", got)
+	}
+}
+
+func TestEmptyTextEventsDoNotCreateResponses(t *testing.T) {
+	m := New(".")
+	for _, kind := range []string{"answer_delta", "text_delta", "text"} {
+		m.applyEvent(taskEvent{Type: kind, Delta: `{"text":""}`})
+	}
+	if len(m.responses) != 0 || len(m.output) != 0 {
+		t.Fatalf("empty events created output: responses=%v output=%v", m.responses, m.output)
+	}
+	m.applyEvent(taskEvent{Type: "answer_delta", Delta: `{"text":"hello"}`})
+	m.applyEvent(taskEvent{Type: "text", Delta: `{"text":""}`})
+	m.applyEvent(taskEvent{Type: "answer_delta", Delta: `{"text":"next"}`})
+	if len(m.responses) != 2 || m.responses[0] != "hello" || m.responses[1] != "next" {
+		t.Fatalf("empty final text did not close the round: %v", m.responses)
 	}
 }
 

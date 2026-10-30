@@ -15,8 +15,8 @@ import (
 )
 
 func TestResumeAcknowledgedEventsAndDeduplicate(t *testing.T) {
-	first := event("text_delta", "same")
-	second := event("text_delta", "same")
+	first := event("answer_delta", "same")
+	second := event("answer_delta", "same")
 	completion := event("task_completed", "")
 	var calls atomic.Int32
 	headers := make(chan string, 4)

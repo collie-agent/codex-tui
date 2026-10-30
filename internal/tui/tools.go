@@ -175,11 +175,31 @@ func (m Model) outputLayout() []outputRow {
 		}
 		var names []string
 		groups := make(map[string][]string)
+		readPaths := make(map[string]int)
 		for _, tool := range region.calls {
 			if _, ok := groups[tool.name]; !ok {
 				names = append(names, tool.name)
 			}
 			summary := strings.ReplaceAll(callSummary(tool.name, tool.arguments), "\n", `\n`)
+			if tool.name == "read_file" {
+				var args map[string]json.RawMessage
+				var path string
+				if json.Unmarshal([]byte(tool.arguments), &args) == nil {
+					if json.Unmarshal(args["path"], &path) != nil {
+						_ = json.Unmarshal(args["file_path"], &path)
+					}
+				}
+				if path != "" {
+					if i, ok := readPaths[path]; ok {
+						status := " [" + tool.status + "]"
+						if tool.status != "completed" && !strings.Contains(groups[tool.name][i], status) {
+							groups[tool.name][i] += status
+						}
+						continue
+					}
+					readPaths[path] = len(groups[tool.name])
+				}
+			}
 			if tool.status != "completed" {
 				summary += " [" + tool.status + "]"
 			}
@@ -194,6 +214,30 @@ func (m Model) outputLayout() []outputRow {
 	return rows
 }
 func callSummary(name, arguments string) string {
+	if name == "apply_patch" {
+		var args map[string]json.RawMessage
+		var patch string
+		if json.Unmarshal([]byte(arguments), &args) == nil {
+			for _, key := range []string{"patch", "input"} {
+				if json.Unmarshal(args[key], &patch) == nil {
+					break
+				}
+			}
+		} else {
+			patch = arguments
+		}
+		var files []string
+		for _, line := range strings.Split(patch, "\n") {
+			for _, prefix := range []string{"*** Update File: ", "*** Add File: ", "*** Delete File: ", "*** Move to: "} {
+				if strings.HasPrefix(line, prefix) {
+					files = append(files, strings.TrimSpace(strings.TrimPrefix(line, prefix)))
+				}
+			}
+		}
+		if len(files) > 0 {
+			return strings.Join(files, ", ")
+		}
+	}
 	var args map[string]json.RawMessage
 	if json.Unmarshal([]byte(arguments), &args) == nil {
 		// Prefer the operation's main argument; unknown tools keep all parameters.

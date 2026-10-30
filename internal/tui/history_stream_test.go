@@ -15,7 +15,7 @@ import (
 func TestHistoryDuringSSE(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprint(w, event("text", "zero\none\ntwo\nthree\nfour\nfive\nsix\nseven"), event("text", "eight\nnine"), event("task_completed", ""))
+		fmt.Fprint(w, event("answer_delta", "zero\none\ntwo\nthree\nfour\nfive\nsix\nseven"), event("answer_delta", "eight\nnine"), event("task_completed", ""))
 		w.(http.Flusher).Flush()
 		<-r.Context().Done()
 	}))

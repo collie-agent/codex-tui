@@ -80,12 +80,12 @@ func TestToolRegionGroupsSummariesAndExpandsInCallOrder(t *testing.T) {
 
 func TestToolRegionsKeepLateResultsAndIndependentExpansion(t *testing.T) {
 	m, _ := toolModel(t,
-		toolFrame("text_delta", `{"text":"intro"}`),
+		toolFrame("answer_delta", `{"text":"intro"}`),
 		toolFrame("tool_call", `{"call_id":"a","name":"first","arguments":"raw argument"}`),
 		toolFrame("tool_result", `{"call_id":"a","result":[{"type":"text","text":"short-result"}]}`),
 		toolFrame("text", `{"text":"intro"}`),
 		toolFrame("tool_call", `{"call_id":"b","name":"second","arguments":{}}`),
-		toolFrame("text", `{"text":"boundary"}`),
+		toolFrame("answer_delta", `{"text":"boundary"}`),
 		toolFrame("tool_call", `{"call_id":"c","name":"third","arguments":{}}`),
 		toolFrame("tool_error", `{"call_id":"b","error":"partial failure","result":[{"type":"text","text":"late-result"},{"type":"image","data":"encoded"}]}`),
 	)
@@ -173,13 +173,13 @@ func TestExpandedRegionUpdatesLiveAndFailureRemainsVisible(t *testing.T) {
 func TestHistoricalRegionClickDragCopyAndResize(t *testing.T) {
 	tail, _ := json.Marshal(map[string]string{"text": strings.Repeat("tail\n", 45)})
 	m, _ := toolModel(t,
-		toolFrame("text", `{"text":"anchor"}`),
+		toolFrame("answer_delta", `{"text":"anchor"}`),
 		toolFrame("tool_call", `{"call_id":"a","name":"alpha","arguments":{}}`),
 		toolFrame("tool_result", `{"call_id":"a","result":[{"type":"text","text":"copy🙂 result  "}]}`),
-		toolFrame("text", `{"text":"between"}`),
+		toolFrame("answer_delta", `{"text":"between"}`),
 		toolFrame("tool_call", `{"call_id":"b","name":"beta","arguments":{}}`),
 		toolFrame("tool_result", `{"call_id":"b","result":[{"type":"text","text":"other-secret"}]}`),
-		toolFrame("text", string(tail)),
+		toolFrame("answer_delta", string(tail)),
 	)
 	m = resize(t, m, 70, 26)
 	for i := 0; i < 5; i++ {
@@ -251,9 +251,9 @@ func TestRawMultilineSummaryStaysOnOneLogicalLine(t *testing.T) {
 
 func TestNewAssistantTextAfterCallsStartsAnotherRegion(t *testing.T) {
 	m, _ := toolModel(t,
-		toolFrame("text_delta", `{"text":"planning"}`),
+		toolFrame("answer_delta", `{"text":"planning"}`),
 		toolFrame("tool_call", `{"call_id":"a","name":"first","arguments":{}}`),
-		toolFrame("text", `{"text":"new answer"}`),
+		toolFrame("answer_delta", `{"text":"new answer"}`),
 		toolFrame("tool_call", `{"call_id":"b","name":"second","arguments":{}}`),
 	)
 	view := visible(m)
@@ -269,5 +269,33 @@ func TestExecAndGlobSummariesShowCommandArgumentsAndPattern(t *testing.T) {
 	)
 	if !strings.Contains(visible(m), "exec git status --short") || !strings.Contains(visible(m), "glob **/*.go") {
 		t.Fatalf("lost command or search operation:\n%s", visible(m))
+	}
+}
+
+func TestReadFileSummaryDeduplicatesPathAndRetainsDetails(t *testing.T) {
+	m, _ := toolModel(t,
+		toolFrame("tool_call", `{"call_id":"a","name":"read_file","arguments":{"path":"a.txt","offset":1}}`),
+		toolFrame("tool_call", `{"call_id":"b","name":"read_file","arguments":{"path":"a.txt","offset":5}}`),
+		toolFrame("tool_error", `{"call_id":"b","error":"bad"}`),
+	)
+	view := visible(m)
+	if strings.Count(view, "a.txt") != 1 || !strings.Contains(view, "[running]") || !strings.Contains(view, "[failed]") {
+		t.Fatalf("incorrect summary: %s", view)
+	}
+	m = clickTool(t, m, "+ expand")
+	if !strings.Contains(visible(m), `"offset": 1`) || !strings.Contains(visible(m), `"offset": 5`) {
+		t.Fatalf("missing details: %s", visible(m))
+	}
+}
+
+func TestApplyPatchShowsFilesAndPatchDetails(t *testing.T) {
+	m, _ := toolModel(t, toolFrame("tool_call", `{"call_id":"a","name":"apply_patch","arguments":{"patch":"*** Begin Patch\n*** Update File: a.txt\n@@\n-old\n+new\n*** Add File: b.txt\n+hello\n*** End Patch"}}`))
+	view := visible(m)
+	if !strings.Contains(view, "apply_patch a.txt, b.txt") || strings.Contains(view, "+hello") {
+		t.Fatalf("incorrect patch summary: %s", view)
+	}
+	m = clickTool(t, m, "+ expand")
+	if !strings.Contains(visible(m), "+hello") || !strings.Contains(visible(m), "-old") {
+		t.Fatalf("missing patch details: %s", visible(m))
 	}
 }

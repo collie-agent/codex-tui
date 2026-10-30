@@ -64,7 +64,7 @@ func TestHistoryStreamingKeepsStableSelection(t *testing.T) {
 	m.selection = textSelection{anchor: screenPoint{0, 1}, focus: screenPoint{5, 1}}
 	before := m.selectedText()
 	// Incoming text below the viewport must not erase the historical selection.
-	event := taskEvent{Type: "text_delta", Delta: `{"text":"new output"}`}
+	event := taskEvent{Type: "answer_delta", Delta: `{"text":"new output"}`}
 	m.applyEvent(event)
 	if got := m.selectedText(); got != before {
 		t.Fatalf("selection moved: %q -> %q", before, got)

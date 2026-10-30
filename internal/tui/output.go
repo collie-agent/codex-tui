@@ -23,32 +23,34 @@ func safeRemote(text string) string {
 func (m *Model) applyEvent(event taskEvent) {
 	var delta struct{ Text string }
 	switch event.Type {
-	case "text_delta", "text":
+	case "answer_delta":
+		if err := json.Unmarshal([]byte(event.Delta), &delta); err != nil {
+			m.connection = "Connection error: invalid answer Delta"
+			m.Close()
+			return
+		}
+		if delta.Text == "" {
+			return
+		}
+		// Answer deltas are decoded by the server.
+		if !m.streaming || m.textInterrupted {
+			m.appendResponse("")
+			m.streaming = true
+			m.textInterrupted = false
+		}
+		m.responses[len(m.responses)-1] += delta.Text
+	case "text":
 		if err := json.Unmarshal([]byte(event.Delta), &delta); err != nil {
 			m.connection = "Connection error: invalid text Delta"
 			m.Close()
 			return
 		}
-		if event.Type == "text_delta" {
-			if !m.streaming || m.textInterrupted {
-				m.appendResponse("")
-				m.streaming = true
-				m.textInterrupted = false
-			}
-			m.responses[len(m.responses)-1] += delta.Text
-		} else {
-			// A full text closes only the current streamed response. Equal text in
-			// later rounds remains a legitimate new response, never global deduplication.
-			// Without response IDs, only a final text extending the pending
-			// delta can cross a call boundary; a different text starts a new unit.
-			if m.streaming && (!m.textInterrupted || strings.HasPrefix(delta.Text, m.responses[len(m.responses)-1])) {
-				m.responses[len(m.responses)-1] = delta.Text
-			} else {
-				m.appendResponse(delta.Text)
-			}
-			m.streaming = false
-			m.textInterrupted = false
+		// A streaming answer already rendered its text; standalone text starts a response.
+		if !m.streaming && delta.Text != "" {
+			m.appendResponse(delta.Text)
 		}
+		m.streaming = false
+		m.textInterrupted = false
 	case "tool_call", "tool_result", "tool_error":
 		// A call ends the contiguous delta run, but its final text may arrive
 		// after tool events. Retain that merge target until another text starts.
