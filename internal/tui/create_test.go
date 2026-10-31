@@ -56,12 +56,13 @@ func TestCreatePreservesDraftAndRequiresCompletion(t *testing.T) {
 	if _, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter}); cmd != nil {
 		t.Fatal("usage unlocked task")
 	}
+	m.applyEvent(taskEvent{Type: "task_info", Delta: `{"conv_id":"conversation"}`})
 	m.applyEvent(taskEvent{Type: "task_completed", Delta: `{}`})
 	next, cmd = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = next.(Model)
 	defer m.Close()
 	if cmd == nil || !strings.Contains(strings.Join(m.responses, "\n"), "You: next draft") {
-		t.Fatal("next independent task missing")
+		t.Fatal("next conversation task missing")
 	}
 }
 func TestCreateFailureRequiresManualRetry(t *testing.T) {

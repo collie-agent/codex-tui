@@ -1,6 +1,6 @@
 # codex-tui
 
-A Bubble Tea v2 preview of the initial Codex terminal screen.
+A Bubble Tea v2 terminal interface for Codex tasks.
 
 Run from the directory you want displayed in the header:
 
@@ -14,10 +14,31 @@ and an interactive terminal. True color terminals give the closest match to
 
 Press **Ctrl+D** to exit. Drag with the left mouse button to select visible text,
 then press **Ctrl+C** to copy it. With no selection, Ctrl+C does nothing. This preview
-shows fixed model and quota text without connecting to any service.
+shows fixed model and quota text. Task requests connect to `http://localhost:8080`:
+Enter sends the input to `POST /tasks` and subscribes to the returned task's SSE output.
 The input supports single-line typing and pasting, Backspace/Delete, Left/Right
-and Home/End. Long input scrolls horizontally with the caret. Enter does nothing;
-Pasted line breaks and tabs become spaces.
+and Home/End. Long input scrolls horizontally with the caret. Pasted line breaks
+and tabs become spaces. While a task is being created or running, you can edit
+the next draft; Enter submits it after the current task completes and confirms
+its conversation. Creation failures retain the input for manual retry.
+
+Tasks within one running instance share a conversation. The first task establishes
+the conversation, and the status row shows its ID. To continue an existing
+conversation in a new instance:
+
+```sh
+go run . --conv-id=YOUR_CONVERSATION_ID
+```
+
+This opens an empty input screen without loading history or starting a task.
+Every submitted task uses the specified conversation and must receive matching
+conversation information from the server. A missing or conflicting confirmation
+blocks further submission and displays the reason. An accepted queue request
+alone does not confirm the conversation or task completion. The server continues
+previous run results and errors; full chat history restoration is not promised.
+Omitting `--conv-id`, or passing an empty value, starts a new conversation on the
+first submission. Conversation identity is retained only for the current process.
+The old `--task-id` startup option is no longer accepted.
 
 Selection covers the title, directory, visible input (including its placeholder),
 and status. Drag in either direction or across rows. Both cells of a wide
@@ -44,7 +65,9 @@ To repeat the editing demo in an interactive terminal:
    to about 20 columns, append and delete text, and use Home/End to inspect both
    ends. Widen it again and check the full text is retained. The gray input area
    stays above the status row throughout.
-5. Press Enter and Ctrl+C: the input stays intact and no reply appears.
+5. With a task server running on port 8080, press Enter to submit a task and
+   check that its output appears. Edit the next draft while it runs; repeated
+   Enter must not create another task until completion and conversation confirmation.
    Press Ctrl+D to exit and check that the normal terminal is restored.
 
 To check selection and the actual system clipboard in an OSC 52 capable terminal:

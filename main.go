@@ -10,11 +10,11 @@ import (
 )
 
 func main() {
-	taskID := flag.String("task-id", "", "attach to an existing task")
+	conversationID := flag.String("conv-id", "", "continue an existing conversation without loading history")
 	flag.Parse()
 	directory, err := os.Getwd()
 	if err == nil {
-		model := tui.NewWithTask(directory, tui.TaskOptions{TaskID: *taskID})
+		model := tui.NewWithTask(directory, tui.TaskOptions{ConversationID: *conversationID})
 		defer model.Close()
 		_, err = tea.NewProgram(model).Run()
 	}

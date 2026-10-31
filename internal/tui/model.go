@@ -19,22 +19,25 @@ const (
 
 // Model implements Bubble Tea's model; terminal dimensions arrive as events.
 type Model struct {
-	directory          string
-	width, height      int
-	input              lineInput
-	selection          textSelection
-	options            TaskOptions
-	create             *creation
-	stream             *subscription
-	taskID, connection string
-	completed          bool
-	responses          []string
-	streaming          bool
-	textInterrupted    bool
-	viewport           outputViewport
-	output             []outputItem
-	tools              map[string]*toolOutput
-	toolPress          toolPress
+	directory             string
+	width, height         int
+	input                 lineInput
+	selection             textSelection
+	options               TaskOptions
+	create                *creation
+	stream                *subscription
+	taskID, connection    string
+	completed             bool
+	conversationID        string
+	conversationConfirmed bool
+	conversationError     string
+	responses             []string
+	streaming             bool
+	textInterrupted       bool
+	viewport              outputViewport
+	output                []outputItem
+	tools                 map[string]*toolOutput
+	toolPress             toolPress
 }
 
 func New(directory string) Model {
@@ -67,10 +70,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		before := strings.Join(m.contentRows(), "\n")
 		if msg.err != nil {
-			m.connection = "Connection error: " + safeRemote(msg.err.Error())
+			// Transport recovery must never hide a conversation ownership failure.
+			if m.conversationError == "" {
+				m.connection = "Connection error: " + safeRemote(msg.err.Error())
+			}
 			return m, m.stream.next
 		}
-		if msg.connected {
+		if msg.connected && m.conversationError == "" {
 			m.connection = "Connected · completion unconfirmed"
 		}
 		if msg.event != nil {
@@ -280,6 +286,9 @@ func (m Model) contentRows() []string {
 	}
 	if statusHeight > 0 {
 		status := paint("GPT-6.1 Terra medium", "#E8BD37") + " · " + paint("0 in", "#C18B9E") + " · " + paint("weekly 88% left", "#C18B9E") + " · " + paint("5h 100% left", "#C18B9E")
+		if m.conversationID != "" {
+			status = "Conversation " + strings.ReplaceAll(safeRemote(m.conversationID), "\n", `\n`) + " · " + status
+		}
 		rows[m.height-1] = row(status, false)
 	}
 	return rows

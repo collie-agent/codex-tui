@@ -22,7 +22,7 @@ type createMessage struct {
 }
 
 func (m Model) submitTask() (tea.Model, tea.Cmd) {
-	if m.create != nil || (m.taskID != "" && !m.completed && m.stream != nil) || strings.TrimSpace(m.input.text) == "" {
+	if m.conversationError != "" || m.create != nil || (m.taskID != "" && !m.completed && m.stream != nil) || strings.TrimSpace(m.input.text) == "" {
 		return m, nil
 	}
 	// Detach the completed subscription before accepting any late messages.
@@ -32,18 +32,21 @@ func (m Model) submitTask() (tea.Model, tea.Cmd) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	pending := &creation{cancel: cancel, input: m.input.text}
+	// Conversation identity survives tasks, but each task must confirm its own ownership.
+	m.conversationConfirmed = false
 	m.create = pending
 	m.taskID, m.connection, m.completed, m.streaming = "Creating", "Creating task", false, false
 	m.tools = nil
-	m.appendResponse("── New independent task ──\nYou: " + pending.input)
+	m.appendResponse("── New task ──\nYou: " + pending.input)
 	// Clear only the submitted draft now: an asynchronous response must never erase
 	// edits made while the POST was in flight.
 	m.input = lineInput{}
 	options := m.options.normalized()
 	return m, func() tea.Msg {
 		body, _ := json.Marshal(struct {
-			Input string `json:"input"`
-		}{pending.input})
+			Input  string `json:"input"`
+			ConvID string `json:"ConvId,omitempty"`
+		}{pending.input, m.conversationID})
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, options.ServerURL+"/tasks", bytes.NewReader(body))
 		if err != nil {
 			return createMessage{source: pending, err: err}

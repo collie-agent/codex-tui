@@ -15,9 +15,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// TaskOptions supplies the subscription boundary; an empty server uses localhost.
+// TaskOptions configures task creation and subscription; an empty server uses localhost.
 type TaskOptions struct {
 	TaskID, ServerURL string
+	ConversationID    string
 	Client            *http.Client
 }
 
@@ -58,6 +59,9 @@ type subscription struct {
 func NewWithTask(directory string, options TaskOptions) Model {
 	m := New(directory)
 	m.options = options
+	// A configured identity selects the conversation, but each submitted task
+	// must still confirm ownership through task_info before another submission.
+	m.conversationID = options.ConversationID
 	if options.TaskID == "" {
 		return m
 	}
@@ -193,7 +197,9 @@ func (s *subscription) read() error {
 		if err := json.Unmarshal([]byte(strings.Join(data, "\n")), &event); err != nil {
 			return false, fmt.Errorf("invalid event: %w", err)
 		}
-		if !json.Valid([]byte(event.Delta)) {
+		// Ownership payload validation belongs to the model so malformed task_info
+		// cannot hide a subsequent completion event behind reconnect attempts.
+		if event.Type != "task_info" && !json.Valid([]byte(event.Delta)) {
 			return false, fmt.Errorf("invalid event Delta")
 		}
 		if event.Type == "answer_delta" || event.Type == "text" {

@@ -23,6 +23,22 @@ func safeRemote(text string) string {
 func (m *Model) applyEvent(event taskEvent) {
 	var delta struct{ Text string }
 	switch event.Type {
+	case "task_info":
+		var info struct {
+			ConvID string `json:"conv_id"`
+		}
+		// Delta contains a second JSON document; only conv_id identifies the conversation.
+		if json.Unmarshal([]byte(event.Delta), &info) == nil && strings.TrimSpace(info.ConvID) != "" {
+			// Never switch an instance to a different conversation, even if later
+			// events return to the original ID or report completion.
+			if m.conversationID != "" && m.conversationID != info.ConvID {
+				m.conversationError = "Protocol error: conversation conflict; submission blocked"
+				m.connection = m.conversationError
+			} else if m.conversationError == "" {
+				m.conversationID = info.ConvID
+				m.conversationConfirmed = true
+			}
+		}
 	case "answer_delta":
 		if err := json.Unmarshal([]byte(event.Delta), &delta); err != nil {
 			m.connection = "Connection error: invalid answer Delta"
@@ -62,7 +78,14 @@ func (m *Model) applyEvent(event taskEvent) {
 		// Usage precedes the final text in the server stream; keep its merge target.
 	case "task_completed":
 		m.completed = true
-		m.connection = "Completed"
+		if !m.conversationConfirmed && m.conversationError == "" {
+			m.conversationError = "Conversation error: missing valid task_info; submission blocked"
+		}
+		if m.conversationError != "" {
+			m.connection = "Completed · " + m.conversationError
+		} else {
+			m.connection = "Completed"
+		}
 	}
 }
 func (m *Model) appendResponse(text string) {
