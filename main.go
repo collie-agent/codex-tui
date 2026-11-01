@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	conversationID := flag.String("conv-id", "", "continue an existing conversation without loading history")
+	conversationID := flag.String("conv-id", "", "load all saved agent runs and continue an existing conversation")
 	flag.Parse()
 	directory, err := os.Getwd()
 	if err == nil {

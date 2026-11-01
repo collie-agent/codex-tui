@@ -13,9 +13,13 @@ import (
 	"github.com/collie-agent/codex-tui/internal/tui"
 )
 
-func TestSpecifiedConversationStartsEmptyAndContinues(t *testing.T) {
+func TestSpecifiedConversationLoadsRunsAndContinues(t *testing.T) {
 	requests := make(chan map[string]string, 4)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/conversations/existing/runs" {
+			fmt.Fprint(w, `{"conv_id":"existing","runs":[{"run_id":"run-1","goal":"first goal","status":"completed","result":{"answer":"first answer"}},{"run_id":"run-2","goal":"second goal","status":"failed","error":"saved failure"}]}`)
+			return
+		}
 		if r.Method == http.MethodPost {
 			var body map[string]string
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -35,11 +39,15 @@ func TestSpecifiedConversationStartsEmptyAndContinues(t *testing.T) {
 	defer server.Close()
 	var model tea.Model = resize(t, tui.NewWithTask("/work", tui.TaskOptions{ConversationID: "existing", ServerURL: server.URL}), 160, 14)
 	defer func() { model.(tui.Model).Close() }()
-	if cmd := model.Init(); cmd != nil {
-		t.Fatal("specified conversation started network work before submission")
+	model, _ = model.Update(receive(t, model.Init()))
+	history := ansi.Strip(model.View().Content)
+	for _, want := range []string{"run-1", "first goal", "first answer", "run-2", "second goal", "saved failure"} {
+		if !strings.Contains(history, want) {
+			t.Fatalf("missing %q in history: %s", want, history)
+		}
 	}
 	view := ansi.Strip(model.View().Content)
-	if !strings.Contains(view, "Ask Codex to do anything") || !strings.Contains(view, "Conversation existing") || strings.Contains(view, "You:") {
+	if !strings.Contains(view, "Ask Codex to do anything") || !strings.Contains(view, "Conversation existing") {
 		t.Fatalf("expected blank input and specified conversation: %s", view)
 	}
 	select {
@@ -53,7 +61,7 @@ func TestSpecifiedConversationStartsEmptyAndContinues(t *testing.T) {
 		model, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 		model, cmd = model.Update(receive(t, cmd))
 		body := <-requests
-		if len(body) != 2 || body["ConvId"] != "existing" || body["input"] != input {
+		if len(body) != 2 || body["conv_id"] != "existing" || body["input"] != input {
 			t.Fatalf("specified conversation request: %#v", body)
 		}
 		for range 3 {
@@ -77,6 +85,11 @@ func TestSpecifiedConversationRequiresServerConfirmation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasPrefix(r.URL.Path, "/conversations/") {
+					id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/conversations/"), "/runs")
+					fmt.Fprintf(w, `{"conv_id":%q,"runs":[]}`, id)
+					return
+				}
 				if r.Method == http.MethodPost {
 					w.WriteHeader(http.StatusCreated)
 					fmt.Fprint(w, `{"task_id":"created"}`)
@@ -91,6 +104,7 @@ func TestSpecifiedConversationRequiresServerConfirmation(t *testing.T) {
 			defer server.Close()
 			var model tea.Model = resize(t, tui.NewWithTask("", tui.TaskOptions{ConversationID: "existing", ServerURL: server.URL}), 180, 14)
 			defer func() { model.(tui.Model).Close() }()
+			model, _ = model.Update(receive(t, model.Init()))
 			model, _ = model.Update(tea.PasteMsg{Content: "first"})
 			model, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			model, cmd = model.Update(receive(t, cmd))
@@ -117,6 +131,11 @@ func TestSpecifiedConversationRequiresServerConfirmation(t *testing.T) {
 func TestSpecifiedConversationQueuedWithoutEventsKeepsWaiting(t *testing.T) {
 	requests := make(chan map[string]string, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/conversations/") {
+			id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/conversations/"), "/runs")
+			fmt.Fprintf(w, `{"conv_id":%q,"runs":[]}`, id)
+			return
+		}
 		if r.Method == http.MethodPost {
 			var body map[string]string
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -134,10 +153,11 @@ func TestSpecifiedConversationQueuedWithoutEventsKeepsWaiting(t *testing.T) {
 	defer server.Close()
 	var model tea.Model = resize(t, tui.NewWithTask("", tui.TaskOptions{ConversationID: "unknown", ServerURL: server.URL}), 180, 14)
 	defer func() { model.(tui.Model).Close() }()
+	model, _ = model.Update(receive(t, model.Init()))
 	model, _ = model.Update(tea.PasteMsg{Content: "wait"})
 	model, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model, cmd = model.Update(receive(t, cmd))
-	if body := <-requests; body["ConvId"] != "unknown" {
+	if body := <-requests; body["conv_id"] != "unknown" {
 		t.Fatalf("queued request changed identity: %#v", body)
 	}
 	model, _ = model.Update(receive(t, cmd))
@@ -178,6 +198,24 @@ func TestEmptySpecifiedConversationStartsNewConversation(t *testing.T) {
 	model, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model, _ = model.Update(receive(t, cmd))
 	if body := <-requests; len(body) != 1 || body["input"] != "new" {
-		t.Fatalf("empty conversation did not omit ConvId: %#v", body)
+		t.Fatalf("empty conversation did not omit conv_id: %#v", body)
+	}
+}
+
+func TestConversationHistoryFailurePreservesDraft(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	var model tea.Model = resize(t, tui.NewWithTask("", tui.TaskOptions{ConversationID: "existing", ServerURL: server.URL}), 180, 14)
+	defer func() { model.(tui.Model).Close() }()
+	model, _ = model.Update(tea.PasteMsg{Content: "my draft"})
+	if _, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter}); cmd != nil {
+		t.Fatal("submitted while history was loading")
+	}
+	model, _ = model.Update(receive(t, model.Init()))
+	view := ansi.Strip(model.View().Content)
+	if !strings.Contains(view, "History error: HTTP 503") || !strings.Contains(view, "my draft") || !strings.Contains(view, "Conversation existing") {
+		t.Fatalf("history failure lost status or draft: %s", view)
 	}
 }

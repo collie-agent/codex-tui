@@ -22,7 +22,7 @@ type createMessage struct {
 }
 
 func (m Model) submitTask() (tea.Model, tea.Cmd) {
-	if m.conversationError != "" || m.create != nil || (m.taskID != "" && !m.completed && m.stream != nil) || strings.TrimSpace(m.input.text) == "" {
+	if m.history != nil || m.conversationError != "" || m.create != nil || (m.taskID != "" && !m.completed && m.stream != nil) || strings.TrimSpace(m.input.text) == "" {
 		return m, nil
 	}
 	// Detach the completed subscription before accepting any late messages.
@@ -34,6 +34,7 @@ func (m Model) submitTask() (tea.Model, tea.Cmd) {
 	pending := &creation{cancel: cancel, input: m.input.text}
 	// Conversation identity survives tasks, but each task must confirm its own ownership.
 	m.conversationConfirmed = false
+	m.runID, m.interrupt, m.interruptState, m.interruptStatus = "", nil, interruptIdle, ""
 	m.create = pending
 	m.taskID, m.connection, m.completed, m.streaming = "Creating", "Creating task", false, false
 	m.tools = nil
@@ -43,9 +44,11 @@ func (m Model) submitTask() (tea.Model, tea.Cmd) {
 	m.input = lineInput{}
 	options := m.options.normalized()
 	return m, func() tea.Msg {
+		// HTTP uses conv_id; ConvId belongs to the server's internal queue protocol.
+		// Sending the queue field here silently creates a different conversation.
 		body, _ := json.Marshal(struct {
 			Input  string `json:"input"`
-			ConvID string `json:"ConvId,omitempty"`
+			ConvID string `json:"conv_id,omitempty"`
 		}{pending.input, m.conversationID})
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, options.ServerURL+"/tasks", bytes.NewReader(body))
 		if err != nil {
@@ -77,6 +80,7 @@ func (m Model) finishCreation(msg createMessage) (tea.Model, tea.Cmd) {
 	pending.cancel()
 	m.create = nil
 	if msg.err != nil {
+		m.interruptState, m.interruptStatus = interruptIdle, ""
 		m.connection = "Create error: " + safeRemote(msg.err.Error()) + " · retry manually"
 		// Keep both the retry input and any draft typed during the failed request.
 		m.input.text = pending.input + m.input.text

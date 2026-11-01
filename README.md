@@ -22,6 +22,13 @@ and tabs become spaces. While a task is being created or running, you can edit
 the next draft; Enter submits it after the current task completes and confirms
 its conversation. Creation failures retain the input for manual retry.
 
+Once a task has started, press **Esc** to request interruption, even while editing
+a draft or reading earlier output. The request being accepted does not mean the
+run has stopped: wait for the Interrupted confirmation before pressing Enter to
+submit the draft. Continuing creates a new run in the same conversation; it does
+not resume the original execution position. Interruption does not undo operations
+already performed by tools.
+
 Tasks within one running instance share a conversation. The first task establishes
 the conversation, and the status row shows its ID. To continue an existing
 conversation in a new instance:
@@ -30,12 +37,15 @@ conversation in a new instance:
 go run . --conv-id=YOUR_CONVERSATION_ID
 ```
 
-This opens an empty input screen without loading history or starting a task.
+This loads all saved agent runs in the conversation, including goals, results,
+errors and expandable tool calls, without starting or resuming a task.
+Loading failures appear in the task header and preserve your input draft.
+Running runs show their persisted snapshot; this does not subscribe to live updates.
 Every submitted task uses the specified conversation and must receive matching
 conversation information from the server. A missing or conflicting confirmation
 blocks further submission and displays the reason. An accepted queue request
 alone does not confirm the conversation or task completion. The server continues
-previous run results and errors; full chat history restoration is not promised.
+previous run results and errors; the displayed snapshot contains only persisted data.
 Omitting `--conv-id`, or passing an empty value, starts a new conversation on the
 first submission. Conversation identity is retained only for the current process.
 The old `--task-id` startup option is no longer accepted.

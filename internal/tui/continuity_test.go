@@ -56,7 +56,7 @@ func TestContinuousTasksShareConversation(t *testing.T) {
 	model, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model, cmd = model.Update(receive(t, cmd))
 	body = <-requests
-	if len(body) != 2 || body["input"] != "continue" || body["ConvId"] != "conversation-1" {
+	if len(body) != 2 || body["input"] != "continue" || body["conv_id"] != "conversation-1" {
 		t.Fatalf("continuation request: %#v", body)
 	}
 	for i := 0; i < 3; i++ {
@@ -69,6 +69,65 @@ func TestContinuousTasksShareConversation(t *testing.T) {
 	fresh := resize(t, tui.NewWithTask("", tui.TaskOptions{ServerURL: server.URL}), 160, 14)
 	if strings.Contains(ansi.Strip(fresh.View().Content), "conversation-1") {
 		t.Fatal("new instance retained conversation")
+	}
+}
+
+func TestContinuousTasksUseServerConversationProtocol(t *testing.T) {
+	for _, configured := range []string{"", "existing"} {
+		t.Run("conversation="+configured, func(t *testing.T) {
+			var conversation string
+			var posts int
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/conversations/existing/runs" {
+					fmt.Fprint(w, `{"conv_id":"existing","runs":[]}`)
+					return
+				}
+				if r.Method == http.MethodPost {
+					// Match codex-server's request decoder: ConvId does not match conv_id.
+					var body struct {
+						Input  string `json:"input"`
+						ConvID string `json:"conv_id"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Error(err)
+					}
+					posts++
+					conversation = body.ConvID
+					if conversation == "" {
+						conversation = fmt.Sprintf("new-conversation-%d", posts)
+					}
+					w.WriteHeader(http.StatusCreated)
+					fmt.Fprintf(w, `{"task_id":"task-%d"}`, posts)
+					return
+				}
+				// Use the actual lowercase HTTP event envelope and terminal payload.
+				info, _ := json.Marshal(map[string]string{"conv_id": conversation, "run_id": fmt.Sprintf("run-%d", posts)})
+				payload, _ := json.Marshal(map[string]string{"id": "info", "type": "task_info", "delta": string(info)})
+				fmt.Fprintf(w, "data: %s\n\ndata: {\"id\":\"end\",\"type\":\"task_completed\",\"delta\":\"{}\"}\n\n", payload)
+			}))
+			defer server.Close()
+			var model tea.Model = resize(t, tui.NewWithTask("", tui.TaskOptions{ServerURL: server.URL, ConversationID: configured}), 200, 18)
+			defer func() { model.(tui.Model).Close() }()
+			if configured != "" {
+				model, _ = model.Update(receive(t, model.Init()))
+			}
+			wantConversation := configured
+			if wantConversation == "" {
+				wantConversation = "new-conversation-1"
+			}
+			for round := 1; round <= 3; round++ {
+				model, _ = model.Update(tea.PasteMsg{Content: fmt.Sprintf("task %d", round)})
+				var cmd tea.Cmd
+				model, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+				for range 4 { // creation response, connected, task_info, terminal event
+					model, cmd = model.Update(receive(t, cmd))
+				}
+				view := ansi.Strip(model.View().Content)
+				if !strings.Contains(view, "Completed") || strings.Contains(view, "error") || conversation != wantConversation {
+					t.Fatalf("round %d did not complete in conversation %q: %s", round, wantConversation, view)
+				}
+			}
+		})
 	}
 }
 

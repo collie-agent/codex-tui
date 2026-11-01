@@ -228,9 +228,11 @@ func TestHistoricalRegionClickDragCopyAndResize(t *testing.T) {
 	if strings.TrimSpace(strings.Split(visible(m), "\n")[1]) != "anchor" {
 		t.Fatal("collapse moved history")
 	}
-	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	for i := 0; i < 10; i++ {
+		m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgDown})
+	}
 	if !strings.Contains(visible(m), "tail") || strings.Contains(visible(m), "回到底部") {
-		t.Fatal("escape did not resume follow")
+		t.Fatal("page down did not resume follow")
 	}
 }
 

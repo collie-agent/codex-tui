@@ -26,9 +26,17 @@ func (m *Model) applyEvent(event taskEvent) {
 	case "task_info":
 		var info struct {
 			ConvID string `json:"conv_id"`
+			RunID  string `json:"run_id"`
+		}
+		if json.Unmarshal([]byte(event.Delta), &info) != nil {
+			return
+		}
+		// Run identity is scoped to this task; conversation identity is verified independently.
+		if strings.TrimSpace(info.RunID) != "" {
+			m.runID = info.RunID
 		}
 		// Delta contains a second JSON document; only conv_id identifies the conversation.
-		if json.Unmarshal([]byte(event.Delta), &info) == nil && strings.TrimSpace(info.ConvID) != "" {
+		if strings.TrimSpace(info.ConvID) != "" {
 			// Never switch an instance to a different conversation, even if later
 			// events return to the original ID or report completion.
 			if m.conversationID != "" && m.conversationID != info.ConvID {
@@ -76,16 +84,19 @@ func (m *Model) applyEvent(event taskEvent) {
 		m.applyTool(event)
 	case "usage":
 		// Usage precedes the final text in the server stream; keep its merge target.
-	case "task_completed":
+	case "task_completed", "task_interrupted":
 		m.completed = true
 		if !m.conversationConfirmed && m.conversationError == "" {
 			m.conversationError = "Conversation error: missing valid task_info; submission blocked"
 		}
-		if m.conversationError != "" {
-			m.connection = "Completed · " + m.conversationError
-		} else {
-			m.connection = "Completed"
+		status := "Completed"
+		if event.Type == "task_interrupted" {
+			status = "Interrupted"
 		}
+		if m.conversationError != "" {
+			status += " · " + m.conversationError
+		}
+		m.connection = status
 	}
 }
 func (m *Model) appendResponse(text string) {

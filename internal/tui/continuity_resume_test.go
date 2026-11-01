@@ -106,7 +106,7 @@ func TestResumedConversationDeduplicatesAndRequiresNewTaskConfirmation(t *testin
 	model, _ = model.Update(tea.PasteMsg{Content: "next"})
 	model, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model, cmd = model.Update(receive(t, cmd))
-	if body := <-requests; body["ConvId"] != "original" || body["input"] != "next" {
+	if body := <-requests; body["conv_id"] != "original" || body["input"] != "next" {
 		t.Fatalf("resumed conversation not reused: %#v", body)
 	}
 	for step := 0; step < 2; step++ {
@@ -263,7 +263,7 @@ func TestConversationRetryPreservesIdentityDraftAndSerialSubmission(t *testing.T
 				t.Fatalf("retry input changed: failed=%#v retried=%#v", failed, retried)
 			}
 			for _, request := range []map[string]string{failed, retried} {
-				id, present := request["ConvId"]
+				id, present := request["conv_id"]
 				if bound && id != "original" || !bound && present {
 					t.Fatalf("retry changed conversation identity: %#v", request)
 				}

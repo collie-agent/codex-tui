@@ -24,9 +24,14 @@ type Model struct {
 	input                 lineInput
 	selection             textSelection
 	options               TaskOptions
+	history               *historyLoad
 	create                *creation
 	stream                *subscription
 	taskID, connection    string
+	runID                 string
+	interrupt             *interruption
+	interruptState        interruptionState
+	interruptStatus       string
 	completed             bool
 	conversationID        string
 	conversationConfirmed bool
@@ -54,6 +59,9 @@ func New(directory string) Model {
 	return Model{directory: safe.String()}
 }
 func (m Model) Init() tea.Cmd {
+	if m.history != nil {
+		return m.loadHistory
+	}
 	if m.stream == nil {
 		return nil
 	}
@@ -62,6 +70,10 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case historyMessage:
+		return m.finishHistory(msg)
+	case interruptMessage:
+		return m.finishInterruption(msg)
 	case createMessage:
 		return m.finishCreation(msg)
 	case streamMessage:
@@ -89,6 +101,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.completed {
 			m.Close()
 			return m, nil
+		}
+		if m.interruptState == interruptDeferred && m.runID != "" {
+			updated, interruptCmd := m.requestInterruption()
+			return updated, tea.Batch(interruptCmd, m.stream.next)
 		}
 		return m, m.stream.next
 	case tea.WindowSizeMsg:
@@ -151,6 +167,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.String() {
 		case "esc":
+			if !m.completed && (m.create != nil || m.stream != nil) {
+				if m.runID == "" {
+					m.interruptState = interruptDeferred
+					m.interruptStatus = "Waiting for run to start before interruption"
+					return m, nil
+				}
+				return m.requestInterruption()
+			}
 			if m.returnButtonVisible(len(m.outputRows())) {
 				m.followOutput()
 			}
@@ -266,7 +290,7 @@ func (m Model) contentRows() []string {
 		for i := 0; i < inputStart; i++ {
 			rows[i] = row("", false)
 		}
-		rows[0] = row("Task "+strings.ReplaceAll(safeRemote(m.taskID)+" · "+m.connection, "\n", `\n`), false)
+		rows[0] = row("Task "+strings.ReplaceAll(safeRemote(m.taskID)+" · "+m.taskStatus(), "\n", `\n`), false)
 		for i, text := range output {
 			rows[i+1] = row(text, false)
 		}

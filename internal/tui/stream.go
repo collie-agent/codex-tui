@@ -63,6 +63,11 @@ func NewWithTask(directory string, options TaskOptions) Model {
 	// must still confirm ownership through task_info before another submission.
 	m.conversationID = options.ConversationID
 	if options.TaskID == "" {
+		if options.ConversationID != "" {
+			ctx, cancel := context.WithCancel(context.Background())
+			m.history = &historyLoad{ctx: ctx, cancel: cancel}
+			m.taskID, m.connection = "History", "Loading conversation"
+		}
 		return m
 	}
 	m.stream = newSubscription(options)
@@ -73,6 +78,9 @@ func NewWithTask(directory string, options TaskOptions) Model {
 
 // Close also covers program termination outside the Ctrl+D update path.
 func (m Model) Close() {
+	if m.history != nil {
+		m.history.cancel()
+	}
 	if m.create != nil {
 		m.create.cancel()
 	}
@@ -223,7 +231,7 @@ func (s *subscription) read() error {
 		case <-s.ctx.Done():
 			return true, nil
 		}
-		return event.Type == "task_completed", nil
+		return event.Type == "task_completed" || event.Type == "task_interrupted", nil
 	}
 	for {
 		line, err := readLine()
