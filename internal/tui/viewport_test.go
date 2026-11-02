@@ -17,9 +17,9 @@ func TestHistoryScrollAndReturn(t *testing.T) {
 	}
 	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	m = updated.(Model)
-	before := m.contentRows()[1]
+	before := m.contentRows()[2]
 	m.responses = append(m.responses, "eight\nnine")
-	if m.contentRows()[1] != before {
+	if m.contentRows()[2] != before {
 		t.Fatal("append moved historical viewport")
 	}
 	if !strings.Contains(ansi.Strip(m.View().Content), "回到底部") {
@@ -37,7 +37,7 @@ func TestHistorySelectionAndResize(t *testing.T) {
 	m.width, m.height, m.taskID = 30, 10, "test"
 	m.responses = []string{"世界🙂 hello\none\ntwo\nthree\nfour\nfive\nsix"}
 	m.scrollOutput(-100)
-	m.selection = textSelection{anchor: screenPoint{9, 1}, focus: screenPoint{2, 1}}
+	m.selection = textSelection{anchor: screenPoint{9, 2}, focus: screenPoint{2, 2}}
 	if got := m.selectedText(); got != "世界🙂 h" {
 		t.Fatalf("reverse Unicode selection: %q", got)
 	}
@@ -61,7 +61,7 @@ func TestHistoryStreamingKeepsStableSelection(t *testing.T) {
 	m.width, m.height, m.taskID = 30, 10, "test"
 	m.responses = []string{"世界🙂 hello\none\ntwo\nthree\nfour\nfive\nsix"}
 	m.scrollOutput(-100)
-	m.selection = textSelection{anchor: screenPoint{0, 1}, focus: screenPoint{5, 1}}
+	m.selection = textSelection{anchor: screenPoint{0, 2}, focus: screenPoint{5, 2}}
 	before := m.selectedText()
 	// Incoming text below the viewport must not erase the historical selection.
 	event := taskEvent{Type: "answer_delta", Delta: `{"text":"new output"}`}

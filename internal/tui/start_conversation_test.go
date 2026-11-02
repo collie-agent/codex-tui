@@ -37,13 +37,30 @@ func TestSpecifiedConversationLoadsRunsAndContinues(t *testing.T) {
 		fmt.Fprintf(w, "data: %s\n\n%s", payload, event("task_completed", ""))
 	}))
 	defer server.Close()
-	var model tea.Model = resize(t, tui.NewWithTask("/work", tui.TaskOptions{ConversationID: "existing", ServerURL: server.URL}), 160, 14)
+	var model tea.Model = resize(t, tui.NewWithTask("/work", tui.TaskOptions{ConversationID: "existing", ServerURL: server.URL}), 160, 24)
 	defer func() { model.(tui.Model).Close() }()
 	model, _ = model.Update(receive(t, model.Init()))
 	history := ansi.Strip(model.View().Content)
 	for _, want := range []string{"run-1", "first goal", "first answer", "run-2", "second goal", "saved failure"} {
 		if !strings.Contains(history, want) {
 			t.Fatalf("missing %q in history: %s", want, history)
+		}
+	}
+	rows := strings.Split(history, "\n")
+	for i, row := range rows {
+		if strings.Contains(row, "› second goal") {
+			if i < 4 || strings.TrimSpace(rows[i-1]) != "" || strings.TrimSpace(rows[i-2]) != "" || strings.TrimSpace(rows[i-3]) != "" || strings.TrimSpace(rows[i-4]) != "first answer" {
+				t.Fatalf("expected two blank rows between runs: %s", history)
+			}
+		}
+	}
+	for _, run := range []struct{ goal, metadata, answer string }{
+		{"first goal", "── Run run-1 · completed ──", "first answer"},
+		{"second goal", "── Run run-2 · failed ──", "saved failure"},
+	} {
+		goal, metadata, answer := strings.Index(history, run.goal), strings.Index(history, run.metadata), strings.Index(history, run.answer)
+		if metadata <= goal || answer <= metadata {
+			t.Fatalf("expected task text, run metadata, then answer: %s", history)
 		}
 	}
 	view := ansi.Strip(model.View().Content)

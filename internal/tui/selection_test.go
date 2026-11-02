@@ -35,13 +35,14 @@ func drag(t *testing.T, model tea.Model, from, to [2]int) tea.Model {
 
 func copySelection(t *testing.T, model tea.Model, want string) tea.Model {
 	t.Helper()
+	// Keep request-only tests isolated from the desktop clipboard.
+	t.Setenv("PATH", t.TempDir())
 	before := model.View().Content
 	next, cmd := model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("selection did not produce a clipboard request")
 	}
-	// Executing this command only returns a request message. No Program runs,
-	// so the renderer never writes OSC 52 or changes the real clipboard.
+	// Without clipboard helpers, the command falls back to the OSC 52 request.
 	request := cmd()
 	if !reflect.DeepEqual(request, tea.SetClipboard(want)()) {
 		t.Fatalf("clipboard request = %q, want payload %q", request, want)

@@ -185,7 +185,7 @@ func TestHistoricalRegionClickDragCopyAndResize(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
 	}
-	if strings.TrimSpace(strings.Split(visible(m), "\n")[1]) != "anchor" {
+	if strings.TrimSpace(strings.Split(visible(m), "\n")[2]) != "anchor" {
 		t.Fatal("did not reach history")
 	}
 	var toggleY int
@@ -221,11 +221,11 @@ func TestHistoricalRegionClickDragCopyAndResize(t *testing.T) {
 		m = resize(t, m, width, 26)
 	}
 	view := visible(m)
-	if strings.TrimSpace(strings.Split(view, "\n")[1]) != "anchor" || strings.Contains(view, "other-secret") || !strings.Contains(view, "+ expand") || !strings.Contains(view, "− collapse") {
+	if strings.TrimSpace(strings.Split(view, "\n")[2]) != "anchor" || strings.Contains(view, "other-secret") || !strings.Contains(view, "+ expand") || !strings.Contains(view, "− collapse") {
 		t.Fatalf("history or independent expansion lost:\n%s", view)
 	}
 	m = clickTool(t, m, "− collapse")
-	if strings.TrimSpace(strings.Split(visible(m), "\n")[1]) != "anchor" {
+	if strings.TrimSpace(strings.Split(visible(m), "\n")[2]) != "anchor" {
 		t.Fatal("collapse moved history")
 	}
 	for i := 0; i < 10; i++ {

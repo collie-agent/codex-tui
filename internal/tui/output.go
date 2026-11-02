@@ -99,6 +99,14 @@ func (m *Model) applyEvent(event taskEvent) {
 		m.connection = status
 	}
 }
+
+// appendRun starts a distinct reading unit for both saved and newly submitted runs.
+func (m *Model) appendRun(text, prompt string) {
+	m.appendResponse(text)
+	m.output[len(m.output)-1].runStart = true
+	m.output[len(m.output)-1].prompt = prompt
+}
+
 func (m *Model) appendResponse(text string) {
 	if len(m.output) == 0 {
 		for i := range m.responses {

@@ -38,7 +38,7 @@ func (m Model) submitTask() (tea.Model, tea.Cmd) {
 	m.create = pending
 	m.taskID, m.connection, m.completed, m.streaming = "Creating", "Creating task", false, false
 	m.tools = nil
-	m.appendResponse("── New task ──\nYou: " + pending.input)
+	m.appendRun("You: "+pending.input, pending.input)
 	// Clear only the submitted draft now: an asynchronous response must never erase
 	// edits made while the POST was in flight.
 	m.input = lineInput{}

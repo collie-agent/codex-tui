@@ -44,7 +44,7 @@ func TestToolRegionsHaveSingleBlankSeparatorsAndWrapWithinMargins(t *testing.T) 
 		toolFrame("answer_delta", `{"text":"after"}`),
 	)
 	rows := strings.Split(visible(m), "\n")
-	if strings.TrimSpace(rows[1]) != "before" || strings.TrimSpace(rows[2]) != "" || !strings.Contains(rows[3], "+ expand") || !strings.Contains(rows[4], "read_file") || !strings.Contains(rows[5], "list_dir") || strings.TrimSpace(rows[6]) != "" || strings.TrimSpace(rows[7]) != "after" {
+	if strings.TrimSpace(rows[2]) != "before" || strings.TrimSpace(rows[3]) != "" || !strings.Contains(rows[4], "+ expand") || !strings.Contains(rows[5], "read_file") || !strings.Contains(rows[6], "list_dir") || strings.TrimSpace(rows[7]) != "" || strings.TrimSpace(rows[8]) != "after" {
 		t.Fatalf("incorrect region spacing:\n%s", visible(m))
 	}
 	m = resize(t, m, 18, 60)

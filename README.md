@@ -57,12 +57,40 @@ dragging clears the selection. Editing, moving the input caret, pasting, or
 resizing also clears it. Copy preserves intervening newlines and omits trailing
 layout spaces. Long input copies only the portion currently visible.
 
-Copy uses Bubble Tea's `tea.SetClipboard`, which sends OSC 52 to the terminal's
-system clipboard (`c`), without requiring `xclip`, `wl-copy`, or OS bindings.
-The terminal must support and permit OSC 52 clipboard writes; SSH and terminal
-multiplexers must pass them through. Unsupported or blocked writes may be ignored
-silently; emitting the request does not confirm clipboard success.
-See the [Bubble Tea clipboard documentation](https://pkg.go.dev/charm.land/bubbletea/v2#SetClipboard).
+To copy, drag with the mouse until the text is highlighted, then press Ctrl+C.
+The terminal must deliver mouse drag events and Ctrl+C to the application.
+Clicking without dragging does not create a selection.
+
+Copy requires at least one working clipboard path:
+
+| Environment | Required tool and conditions |
+| --- | --- |
+| Linux / Wayland | `wl-copy` from `wl-clipboard` must be on `PATH`; `WAYLAND_DISPLAY` must be set and the process must have access to that compositor session. |
+| Linux / X11 or XWayland | `xclip` or `xsel` must be on `PATH`; `DISPLAY` must be set and the process must have access to that X server. The app writes the CLIPBOARD selection. |
+| macOS | The system `pbcopy` command must be on `PATH` and have access to the desktop clipboard. |
+| Terminal clipboard (OSC 52) | The terminal must support and permit OSC 52 clipboard writes. SSH and terminal multiplexers such as tmux must pass these sequences through. This is also the available path on platforms without a supported desktop helper. |
+
+The app tries `wl-copy` first when `WAYLAND_DISPLAY` is set, then `xclip` and
+`xsel` when `DISPLAY` is set. On macOS it tries `pbcopy`. Desktop helper attempts
+run asynchronously with a shared two-second timeout. The app also sends an
+OSC 52 request after those attempts, even if a desktop helper succeeded.
+Neither installing a helper without access to its display session nor setting
+a display variable alone is sufficient.
+
+For Debian/Ubuntu, install the helper matching your desktop session:
+
+```sh
+sudo apt install wl-clipboard  # Wayland
+sudo apt install xclip         # X11 / XWayland; xsel is another option
+```
+
+If copying fails, check that the selection is highlighted, that the matching
+helper is available on `PATH`, and that the app can access the desktop session.
+For SSH, a desktop helper runs on the remote machine; copying to your local
+clipboard requires OSC 52 support in your local terminal and passthrough along
+the connection. A terminal can silently ignore OSC 52, so sending the request
+does not confirm that the clipboard changed. Verify by pasting into another
+application.
 
 To repeat the editing demo in an interactive terminal:
 
@@ -80,7 +108,7 @@ To repeat the editing demo in an interactive terminal:
    Enter must not create another task until completion and conversation confirmation.
    Press Ctrl+D to exit and check that the normal terminal is restored.
 
-To check selection and the actual system clipboard in an OSC 52 capable terminal:
+To check selection and the actual system clipboard with one of the paths above:
 
 1. Run `go run .`, drag over `OpenAI Codex`, and check its selection highlight.
    Press Ctrl+C and paste into another application; expect exactly `OpenAI Codex`.
@@ -101,8 +129,8 @@ and xterm's `insert-selection(CLIPBOARD)` pasted exactly `中文` into a separat
 Python receiver after the app exited. Ctrl+D exited with code 0, left the alternate
 screen, and restored the app PTY's original terminal attributes. This verifies
 real clipboard transfer and paste; mouse events were injected, and graphical
-appearance was not manually inspected. The normal automated tests only observe
-clipboard request messages and never access the system clipboard.
+appearance was not manually inspected. Automated tests check OSC 52 request messages and exercise the desktop-helper
+path with a controlled executable; they do not access the real system clipboard.
 
 Run checks with:
 
@@ -110,3 +138,15 @@ Run checks with:
 go test ./...
 go vet ./...
 ```
+
+Use the mouse wheel to scroll task output, or PgUp/PgDn to move by a page with
+one row of overlap. Scrolling pauses automatic following; use the return-to-bottom
+button to resume. Once a run's goal scrolls out of view, it stays in a gray bar
+below the task status. The bar follows the run currently being read, including
+historical runs, and supports text selection and copying. Long goals are shortened
+to fit one row; click the pinned goal to jump to its original text and pause
+automatic following. Dragging over the pinned goal still selects text for copying.
+
+Submitted task goals appear as full-width gray cards with a `›` prefix, light
+text, and one blank row above and below. Long goals wrap within the text margins.
+Saved run goals use the same style, with run metadata shown separately.

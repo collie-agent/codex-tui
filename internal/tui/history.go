@@ -84,7 +84,7 @@ func (m Model) finishHistory(msg historyMessage) (tea.Model, tea.Cmd) {
 	// Snapshots are already ordered by the server. They describe saved progress,
 	// not completion events or permission to resume an executing run.
 	for _, run := range msg.snapshot.Runs {
-		m.appendResponse("── Run " + run.RunID + " · " + run.Status + " ──\nYou: " + run.Goal)
+		m.appendRun("── Run "+run.RunID+" · "+run.Status+" ──\nYou: "+run.Goal, run.Goal)
 		var region *toolRegion
 		for _, call := range run.ToolCalls {
 			if region == nil {

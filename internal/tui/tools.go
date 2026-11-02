@@ -9,6 +9,8 @@ import (
 )
 
 type outputItem struct {
+	runStart bool
+	prompt   string
 	response int
 	region   *toolRegion
 }
@@ -24,14 +26,22 @@ type toolRegion struct {
 	expanded bool
 }
 type outputRow struct {
+	taskCard      bool
+	accentEnd     int
+	accentColor   string
+	prompt        string
+	runHeading    bool
+	runBlock      int
 	text          string
 	block, offset int
 	toggle        *toolRegion
 }
 type toolPress struct {
-	tool  *toolRegion
-	x, y  int
-	moved bool
+	sticky      bool
+	targetBlock int
+	tool        *toolRegion
+	x, y        int
+	moved       bool
 }
 
 func prettyJSON(raw string) string {
@@ -123,12 +133,15 @@ func (m Model) outputLayout() []outputRow {
 	var rows []outputRow
 	// Logical lines and byte offsets remain stable when terminal width changes.
 	block := 0
+	prompt := ""
+	runHeading := false
+	runBlock := 0
 	wrap := func(text string) []outputRow {
 		var wrapped []outputRow
 		for _, logical := range strings.Split(safeRemote(text), "\n") {
 			offset := 0
 			for _, line := range strings.Split(ansi.Hardwrap(logical, max(1, m.contentWidth()), true), "\n") {
-				wrapped = append(wrapped, outputRow{text: line, block: block, offset: offset})
+				wrapped = append(wrapped, outputRow{text: line, block: block, offset: offset, prompt: prompt, runHeading: runHeading, runBlock: runBlock})
 				offset += len(line)
 			}
 			block++
@@ -136,6 +149,15 @@ func (m Model) outputLayout() []outputRow {
 		return wrapped
 	}
 	appendText := func(text string) { rows = append(rows, wrap(text)...) }
+	appendToolText := func(text, prefix, color string) {
+		for _, line := range wrap(text) {
+			// Offsets refer to the unstyled text, keeping wrapping and hit testing
+			// independent of ANSI sequences used by the presentation layer.
+			line.accentEnd = max(0, min(len(line.text), len(prefix)-line.offset))
+			line.accentColor = color
+			rows = append(rows, line)
+		}
+	}
 	items := m.output
 	// Keep models containing plain historical responses compatible with the viewport.
 	if len(items) == 0 {
@@ -144,9 +166,30 @@ func (m Model) outputLayout() []outputRow {
 		}
 	}
 	for index, item := range items {
-		// Separate reading units once per region, never once per call.
-		if index > 0 && ((item.region == nil) != (items[index-1].region == nil)) {
+		// Run boundaries have a wider gap than tool/text boundaries.
+		if index > 0 && item.runStart {
 			appendText("")
+			appendText("")
+		} else if index > 0 && ((item.region == nil) != (items[index-1].region == nil)) {
+			appendText("")
+		}
+		if item.runStart {
+			prompt = item.prompt
+			runBlock = block
+		}
+		runHeading = item.runStart
+		if item.runStart {
+			card := append(wrap(""), wrap("› "+item.prompt)...)
+			card = append(card, wrap("")...)
+			for _, line := range card {
+				line.taskCard = true
+				rows = append(rows, line)
+			}
+			// Saved run metadata follows the task card, outside its background.
+			if before, _, ok := strings.Cut(m.responses[item.response], "\nYou: "); ok {
+				appendText(before)
+			}
+			continue
 		}
 		if item.region == nil {
 			appendText(m.responses[item.response])
@@ -163,7 +206,8 @@ func (m Model) outputLayout() []outputRow {
 		}
 		if region.expanded {
 			for _, tool := range region.calls {
-				appendText("● " + tool.name + " [" + tool.status + "]")
+				name := "● " + safeRemote(tool.name)
+				appendToolText(name+toolStatusLabel(tool.status), name, actionBlue)
 				if tool.arguments != "" {
 					appendText(tool.arguments)
 				}
@@ -191,8 +235,8 @@ func (m Model) outputLayout() []outputRow {
 				}
 				if path != "" {
 					if i, ok := readPaths[path]; ok {
-						status := " [" + tool.status + "]"
-						if tool.status != "completed" && !strings.Contains(groups[tool.name][i], status) {
+						status := toolStatusLabel(tool.status)
+						if status != "" && !strings.Contains(groups[tool.name][i], status) {
 							groups[tool.name][i] += status
 						}
 						continue
@@ -200,14 +244,17 @@ func (m Model) outputLayout() []outputRow {
 					readPaths[path] = len(groups[tool.name])
 				}
 			}
-			if tool.status != "completed" {
-				summary += " [" + tool.status + "]"
-			}
+			summary += toolStatusLabel(tool.status)
 
 			groups[tool.name] = append(groups[tool.name], summary)
 		}
 		for _, name := range names {
-			appendText(strings.ReplaceAll(name, "\n", `\n`) + " " + strings.Join(groups[name], ", "))
+			label := strings.ReplaceAll(safeRemote(name), "\n", `\n`)
+			color := actionBlue
+			if name == "shell" || name == "exec_command" || name == "run_command" || name == "bash" {
+				color = commandGreen
+			}
+			appendToolText(label+" "+strings.Join(groups[name], ", "), label, color)
 		}
 	}
 
@@ -273,14 +320,25 @@ func callSummary(name, arguments string) string {
 
 func (m Model) toolAt(x, y int) *toolRegion {
 	x -= m.margin()
-	if x < 0 || x >= m.contentWidth() || y < 1 || y >= m.layout().inputStart {
+	top, bottom := m.outputBounds()
+	if x < 0 || x >= m.contentWidth() || y < top || y >= bottom {
 		return nil
 	}
 	rows := m.outputLayout()
 	start, end := m.outputRange(len(rows))
-	index := start + y - 1
+	index := start + y - top
 	if index >= end || x >= ansi.StringWidth(rows[index].text) {
 		return nil
 	}
 	return rows[index].toggle
+}
+
+// Successful calls need no status label in either summaries or expanded details.
+func toolStatusLabel(status string) string {
+	switch status {
+	case "", "success", "completed":
+		return ""
+	default:
+		return " [" + status + "]"
+	}
 }

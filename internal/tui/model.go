@@ -12,9 +12,14 @@ import (
 )
 
 const (
-	background      = "#303030"
-	inputBackground = "#484848"
-	muted           = "#A0A0A0"
+	background       = "#303030"
+	inputBackground  = "#484848"
+	muted            = "#A0A0A0"
+	foreground       = "#EEEEEE"
+	promptBackground = "#505050"
+	actionBlue       = "#75BFFF"
+	commandGreen     = "#8FCA73"
+	errorRed         = "#F16D66"
 )
 
 // Model implements Bubble Tea's model; terminal dimensions arrive as events.
@@ -136,7 +141,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.followOutput()
 				return m, nil
 			}
-			m.toolPress = toolPress{tool: m.toolAt(msg.X, msg.Y), x: msg.X, y: msg.Y}
+			target, sticky := m.stickyTarget(msg.X, msg.Y)
+			m.toolPress = toolPress{tool: m.toolAt(msg.X, msg.Y), x: msg.X, y: msg.Y, sticky: sticky, targetBlock: target}
 			point := m.mousePoint(msg.Mouse())
 			m.selection = textSelection{anchor: point, focus: point, dragging: true}
 		}
@@ -157,6 +163,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewport = outputViewport{top: start, paused: true}
 				m.clampOutput()
 				m.selection = textSelection{}
+			}
+			if p := m.toolPress; p.sticky && !p.moved && msg.X == p.x && msg.Y == p.y {
+				if target, ok := m.stickyTarget(msg.X, msg.Y); ok && target == p.targetBlock {
+					// Resolve the logical heading again: streaming or wrapping may
+					// have changed its physical row since the mouse press.
+					for i, row := range m.outputLayout() {
+						if row.block == target {
+							m.viewport = outputViewport{top: i, paused: true}
+							m.clampOutput()
+							m.selection = textSelection{}
+							break
+						}
+					}
+				}
 			}
 			m.toolPress = toolPress{}
 		}
@@ -179,15 +199,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.followOutput()
 			}
 		case "pgup":
-			m.scrollOutput(-max(1, m.layout().inputStart-2))
+			m.scrollOutput(-max(1, m.outputCapacity(len(m.outputRows()))-1))
 		case "pgdown":
-			m.scrollOutput(max(1, m.layout().inputStart-2))
+			m.scrollOutput(max(1, m.outputCapacity(len(m.outputRows()))-1))
 		case "ctrl+d":
 			m.Close()
 			return m, tea.Quit
 		case "ctrl+c":
 			if m.selection.active() {
-				return m, tea.SetClipboard(m.selectedText())
+				return m, copyToClipboard(m.selectedText())
 			}
 		case "enter":
 			return m.submitTask()
@@ -242,10 +262,19 @@ func (m Model) layout() screenLayout {
 func (m Model) render() string {
 	rows := m.contentRows()
 	layout := m.layout()
+	output := m.outputLayout()
+	start, end := m.outputRange(len(output))
+	top, _ := m.outputBounds()
 	for i, text := range rows {
 		color := background
 		if i >= layout.inputStart && i < layout.inputStart+layout.inputHeight {
 			color = inputBackground
+		}
+		if m.taskID != "" && i >= top && i-top < end-start && output[start+i-top].taskCard {
+			color = promptBackground
+		}
+		if i == 1 && m.hasStickyPrompt() {
+			color = promptBackground
 		}
 		padding := strings.Repeat(" ", max(0, m.width-ansi.StringWidth(text)))
 		rows[i] = text + lipgloss.NewStyle().Background(lipgloss.Color(color)).Render(padding)
@@ -291,8 +320,26 @@ func (m Model) contentRows() []string {
 			rows[i] = row("", false)
 		}
 		rows[0] = row("Task "+strings.ReplaceAll(safeRemote(m.taskID)+" · "+m.taskStatus(), "\n", `\n`), false)
+		// Use the reserved top padding row, so pinning never shifts the viewport
+		// or changes tool hit testing and copy coordinates.
+		visibleRows := m.outputLayout()
+		if inputStart > 2 && start < len(visibleRows) {
+			first := visibleRows[start]
+			if first.prompt != "" && !first.runHeading {
+				prompt := "› " + strings.ReplaceAll(safeRemote(first.prompt), "\n", " ")
+				prompt = ansi.Truncate(prompt, m.contentWidth(), "…")
+				rows[1] = base.Background(lipgloss.Color(promptBackground)).Foreground(lipgloss.Color(foreground)).Render(
+					strings.Repeat(" ", m.margin()) + prompt)
+			}
+		}
+		top, _ := m.outputBounds()
 		for i, text := range output {
-			rows[i+1] = row(text, false)
+			if visibleRows[start+i].taskCard {
+				rows[top+i] = base.Background(lipgloss.Color(promptBackground)).Foreground(lipgloss.Color(foreground)).Render(
+					strings.Repeat(" ", m.margin()) + text)
+			} else {
+				rows[top+i] = row(styleOutput(visibleRows[start+i], text), false)
+			}
 		}
 		if m.returnButtonVisible(len(m.outputRows())) {
 			label := ansi.Truncate(returnButtonLabel, m.contentWidth(), "")
@@ -305,6 +352,9 @@ func (m Model) contentRows() []string {
 		text := ""
 		if i == inputHeight/2 {
 			text, _ = m.input.display(m.contentWidth())
+			if m.input.text != "" {
+				text = base.Background(lipgloss.Color(inputBackground)).Foreground(lipgloss.Color(foreground)).Render(text)
+			}
 		}
 		rows[inputStart+i] = row(text, true)
 	}
