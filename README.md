@@ -2,6 +2,36 @@
 
 A Bubble Tea v2 terminal interface for Codex tasks.
 
+## Features
+
+- **Live task output:** submit tasks to the local task server and read assistant
+  responses and tool activity over SSE. Interrupted connections reconnect and
+  events with previously received IDs are skipped to avoid duplicate output.
+- **Conversation continuity:** keep subsequent tasks in the same conversation,
+  or load saved runs with `--conv-id` before continuing the conversation.
+- **Interruption and drafts:** press Esc to request interruption and prepare the
+  next input while a task is running. Submit the draft once the current task has
+  finished and the server has confirmed its conversation.
+- **Task timing:** a live `Working (7s • esc to interrupt)` indicator updates
+  every second, with a blank row above and below. Completed tasks retain
+  `Worked for 3m 3s • 11:25 AM` in their output.
+- **Expandable tool calls:** consecutive calls form a tool call region, grouped
+  by tool name in the collapsed view. Click `+ expand` to inspect each call's
+  arguments, status and results; click `− collapse` to return to summaries.
+- **Output navigation:** scroll with the mouse wheel or PgUp/PgDn, return to the
+  latest output with the return-to-bottom button, and click a pinned task goal
+  to jump back to its original text. Task goals appear as full-width gray cards.
+- **Unicode editing and copying:** edit Chinese text, combining characters and
+  emoji without splitting characters; select visible text with the mouse and
+  copy through desktop clipboard helpers or OSC 52.
+- **Model and token usage:** the status row shows the conversation ID, the model
+  name reported by the server, and accumulated input, cached input and output
+  token counts received during the current instance. Counts are displayed in
+  whole thousands (`K`, rounded down); unknown counts are omitted. Loading saved
+  runs does not reconstruct historical usage totals.
+
+## Quick start
+
 Run from the directory you want displayed in the header:
 
 ```sh
@@ -13,8 +43,8 @@ and an interactive terminal. True color terminals give the closest match to
 `prd/init.png`; terminals with fewer colors may approximate the palette.
 
 Press **Ctrl+D** to exit. Drag with the left mouse button to select visible text,
-then press **Ctrl+C** to copy it. With no selection, Ctrl+C does nothing. This preview
-shows fixed model and quota text. Task requests connect to `http://localhost:8080`:
+then press **Ctrl+C** to copy it. With no selection, Ctrl+C does nothing.
+Task requests require a running task server at `http://localhost:8080`:
 Enter sends the input to `POST /tasks` and subscribes to the returned task's SSE output.
 The input supports single-line typing and pasting, Backspace/Delete, Left/Right
 and Home/End. Long input scrolls horizontally with the caret. Pasted line breaks
@@ -49,6 +79,23 @@ previous run results and errors; the displayed snapshot contains only persisted 
 Omitting `--conv-id`, or passing an empty value, starts a new conversation on the
 first submission. Conversation identity is retained only for the current process.
 The old `--task-id` startup option is no longer accepted.
+
+## Controls
+
+| Key / action | Behavior |
+| --- | --- |
+| Enter | Submit the input when no task is active and conversation confirmation permits it. |
+| Esc | Request interruption of the current task; when no task is active, return to the bottom if the return button is visible. |
+| Ctrl+D | Exit the TUI. |
+| Left / Right, Home / End | Move the input caret. |
+| Backspace / Delete | Delete the previous / next whole character. |
+| Mouse wheel, PgUp / PgDn | Scroll task output and pause automatic following. |
+| Click return-to-bottom | Resume following the latest output. |
+| Click pinned task goal | Jump to the original goal and pause following. |
+| Click `+ expand` / `− collapse` | Toggle tool call details. |
+| Left-button drag, then Ctrl+C | Select and copy visible text. |
+
+## Selection and clipboard
 
 Selection covers the title, directory, visible input (including its placeholder),
 and status. Drag in either direction or across rows. Both cells of a wide
@@ -92,6 +139,8 @@ the connection. A terminal can silently ignore OSC 52, so sending the request
 does not confirm that the clipboard changed. Verify by pasting into another
 application.
 
+## Manual verification
+
 To repeat the editing demo in an interactive terminal:
 
 1. Run `go run .` and check the empty hint `Ask Codex to do anything`.
@@ -132,12 +181,16 @@ real clipboard transfer and paste; mouse events were injected, and graphical
 appearance was not manually inspected. Automated tests check OSC 52 request messages and exercise the desktop-helper
 path with a controlled executable; they do not access the real system clipboard.
 
+## Development checks
+
 Run checks with:
 
 ```sh
 go test ./...
 go vet ./...
 ```
+
+## Reading task output
 
 Use the mouse wheel to scroll task output, or PgUp/PgDn to move by a page with
 one row of overlap. Scrolling pauses automatic following; use the return-to-bottom
@@ -150,3 +203,12 @@ automatic following. Dragging over the pinned goal still selects text for copyin
 Submitted task goals appear as full-width gray cards with a `›` prefix, light
 text, and one blank row above and below. Long goals wrap within the text margins.
 Saved run goals use the same style, with run metadata shown separately.
+
+The timer starts when task creation succeeds and the app begins subscribing to
+output. Each task starts a new timer. Completion records show elapsed whole
+seconds and the local completion time; interrupted tasks show `Interrupted after`
+instead. Connection errors do not stop the timer or confirm completion. Saved run
+snapshots do not reconstruct historical timing.
+
+While reading earlier output, the return-to-bottom button replaces the live timer.
+Very short terminals omit the live indicator to preserve room for task output.

@@ -65,7 +65,7 @@ func TestSelectionCopyRegionsAndDirections(t *testing.T) {
 		{"title", [2]int{5, 1}, [2]int{16, 1}, "OpenAI Codex"},
 		{"path", [2]int{2, 2}, [2]int{6, 2}, "/项目"},
 		{"input", [2]int{4, 7}, [2]int{12, 7}, "A中👩‍💻e\u0301B"},
-		{"status", [2]int{2, 9}, [2]int{21, 9}, "GPT-6.1 Terra medium"},
+		{"status", [2]int{2, 9}, [2]int{21, 9}, ""},
 		{"cross line", [2]int{5, 1}, [2]int{6, 2}, "OpenAI Codex (v0.165.0)\n/项目"},
 		{"blank rows", [2]int{2, 2}, [2]int{4, 7}, "/项目\n\n\n\n\n› A"},
 	} {
@@ -136,7 +136,7 @@ func TestSelectionClearingAndClamping(t *testing.T) {
 	model := resize(t, tui.New("/workspace"), 20, 10)
 	model = drag(t, model, [2]int{-10, -1}, [2]int{200, 100})
 	// The header's final space is real truncated content, not layout padding.
-	copySelection(t, model, "\n>_ OpenAI Codex \n/workspace\n\n\n\n\n› Ask Codex to d\n\nGPT-6.1 Terra me")
+	copySelection(t, model, "\n>_ OpenAI Codex \n/workspace\n\n\n\n\n› Ask Codex to d\n\n")
 }
 
 func TestSelectionCopiesVisibleScrolledInput(t *testing.T) {

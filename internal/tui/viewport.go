@@ -38,7 +38,12 @@ func (m *Model) scrollOutput(delta int) {
 func (m Model) outputBounds() (int, int) {
 	limit := m.layout().inputStart
 	top := min(2, limit)
-	return top, max(top, limit-1)
+	bottomPadding := 1
+	// Reserve the timer and its blank rows in the shared viewport geometry.
+	if m.timerVisible() {
+		bottomPadding = 3
+	}
+	return top, max(top, limit-bottomPadding)
 }
 
 // The return action occupies the bottom padding row while viewing history.
@@ -82,4 +87,9 @@ func (m Model) stickyTarget(x, y int) (int, bool) {
 	rows := m.outputLayout()
 	start, _ := m.outputRange(len(rows))
 	return rows[start].runBlock, true
+}
+
+// Tiny terminals retain the original viewport instead of squeezing in a timer.
+func (m Model) timerVisible() bool {
+	return !m.startedAt.IsZero() && !m.completed && m.layout().inputStart >= 10
 }

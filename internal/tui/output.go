@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"math/big"
 	"strconv"
 	"strings"
 	"unicode"
@@ -25,12 +26,14 @@ func (m *Model) applyEvent(event taskEvent) {
 	switch event.Type {
 	case "task_info":
 		var info struct {
-			ConvID string `json:"conv_id"`
-			RunID  string `json:"run_id"`
+			ModelName string `json:"model_name"`
+			ConvID    string `json:"conv_id"`
+			RunID     string `json:"run_id"`
 		}
 		if json.Unmarshal([]byte(event.Delta), &info) != nil {
 			return
 		}
+		m.modelName = info.ModelName
 		// Run identity is scoped to this task; conversation identity is verified independently.
 		if strings.TrimSpace(info.RunID) != "" {
 			m.runID = info.RunID
@@ -83,8 +86,13 @@ func (m *Model) applyEvent(event taskEvent) {
 		}
 		m.applyTool(event)
 	case "usage":
-		// Usage precedes the final text in the server stream; keep its merge target.
+		// Usage is per HTTP attempt, not a task completion signal or cumulative total.
+		var usage tokenUsage
+		if json.Unmarshal([]byte(event.Delta), &usage) == nil {
+			m.usage.add(usage)
+		}
 	case "task_completed", "task_interrupted":
+		m.finishTimer(event.Type == "task_completed")
 		m.completed = true
 		if !m.conversationConfirmed && m.conversationError == "" {
 			m.conversationError = "Conversation error: missing valid task_info; submission blocked"
@@ -123,4 +131,48 @@ func (m Model) outputRows() []string {
 		rows[i] = row.text
 	}
 	return rows
+}
+
+// tokenUsage preserves unknown counts instead of presenting them as zero.
+type tokenUsage struct {
+	Input  string `json:"input_tokens"`
+	Cached string `json:"cached_input_tokens"`
+	Output string `json:"output_tokens"`
+}
+
+func (u tokenUsage) label() string {
+	var parts []string
+	for _, metric := range []struct{ value, name string }{
+		{u.Input, "in"}, {u.Cached, "cache in"}, {u.Output, "out"},
+	} {
+		n, ok := new(big.Int).SetString(metric.value, 10)
+		if !ok || n.Sign() < 0 {
+			continue
+		}
+		// Keep exact totals; only the displayed value is truncated to K.
+		parts = append(parts, n.Quo(n, big.NewInt(1000)).String()+"K "+metric.name)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// Totals survive task boundaries within this conversation. Unknown counts make
+// that dimension unknown: a partial sum would understate the actual usage.
+func (u *tokenUsage) add(next tokenUsage) {
+	add := func(total, value string) string {
+		if value == "" {
+			return total
+		}
+		if total == "" {
+			total = "0"
+		}
+		a, okA := new(big.Int).SetString(total, 10)
+		b, okB := new(big.Int).SetString(value, 10)
+		if !okA || !okB || a.Sign() < 0 || b.Sign() < 0 {
+			return "unknown"
+		}
+		return a.Add(a, b).String()
+	}
+	u.Input = add(u.Input, next.Input)
+	u.Cached = add(u.Cached, next.Cached)
+	u.Output = add(u.Output, next.Output)
 }

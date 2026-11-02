@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -37,6 +38,7 @@ func (m Model) submitTask() (tea.Model, tea.Cmd) {
 	m.runID, m.interrupt, m.interruptState, m.interruptStatus = "", nil, interruptIdle, ""
 	m.create = pending
 	m.taskID, m.connection, m.completed, m.streaming = "Creating", "Creating task", false, false
+	m.startedAt = time.Time{}
 	m.tools = nil
 	m.appendRun("You: "+pending.input, pending.input)
 	// Clear only the submitted draft now: an asynchronous response must never erase
@@ -95,5 +97,6 @@ func (m Model) finishCreation(msg createMessage) (tea.Model, tea.Cmd) {
 	options.TaskID = msg.taskID
 	m.stream = newSubscription(options)
 	m.taskID, m.connection = msg.taskID, "Connecting"
+	m.startTimer()
 	return m, m.Init()
 }

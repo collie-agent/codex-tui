@@ -41,6 +41,7 @@ func newSubscription(options TaskOptions) *subscription {
 type streamMessage struct {
 	source    *subscription
 	connected bool
+	tick      bool
 	event     *taskEvent
 	err       error
 }
@@ -73,6 +74,7 @@ func NewWithTask(directory string, options TaskOptions) Model {
 	m.stream = newSubscription(options)
 	m.taskID = options.TaskID
 	m.connection = "Connecting"
+	m.startTimer()
 	return m
 }
 
@@ -89,7 +91,12 @@ func (m Model) Close() {
 	}
 }
 func (s *subscription) next() tea.Msg {
+	// Wake the UI even when the server has no new output; cancellation stops ticks.
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
 	select {
+	case <-timer.C:
+		return streamMessage{source: s, tick: true}
 	case msg := <-s.messages:
 		return msg
 	case <-s.ctx.Done():

@@ -141,7 +141,7 @@ func TestLongInputAndNarrowScreenEditing(t *testing.T) {
 		t.Fatal("resizing lost input")
 	}
 	lines := strings.Split(ansi.Strip(model.View().Content), "\n")
-	if !strings.Contains(lines[11], "5h 100% left") || strings.TrimSpace(lines[8]) != "" || strings.TrimSpace(lines[10]) != "" {
+	if strings.TrimSpace(lines[11]) != "" || strings.TrimSpace(lines[8]) != "" || strings.TrimSpace(lines[10]) != "" {
 		t.Fatal("editing damaged the bottom layout")
 	}
 }

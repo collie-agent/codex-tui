@@ -4,6 +4,7 @@ package tui
 import (
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	tea "charm.land/bubbletea/v2"
@@ -24,6 +25,8 @@ const (
 
 // Model implements Bubble Tea's model; terminal dimensions arrive as events.
 type Model struct {
+	modelName             string
+	usage                 tokenUsage
 	directory             string
 	width, height         int
 	input                 lineInput
@@ -38,6 +41,8 @@ type Model struct {
 	interruptState        interruptionState
 	interruptStatus       string
 	completed             bool
+	startedAt             time.Time
+	timerNow              time.Time
 	conversationID        string
 	conversationConfirmed bool
 	conversationError     string
@@ -84,6 +89,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case streamMessage:
 		if (msg.source != nil && msg.source != m.stream) || m.completed {
 			return m, nil
+		}
+		m.timerNow = time.Now()
+		if msg.tick {
+			return m, m.stream.next
 		}
 		before := strings.Join(m.contentRows(), "\n")
 		if msg.err != nil {
@@ -341,6 +350,9 @@ func (m Model) contentRows() []string {
 				rows[top+i] = row(styleOutput(visibleRows[start+i], text), false)
 			}
 		}
+		if m.timerVisible() && !m.returnButtonVisible(len(m.outputRows())) {
+			rows[inputStart-2] = row("• Working ("+elapsedLabel(m.timerNow.Sub(m.startedAt))+" • esc to interrupt)", false)
+		}
 		if m.returnButtonVisible(len(m.outputRows())) {
 			label := ansi.Truncate(returnButtonLabel, m.contentWidth(), "")
 			left := (m.contentWidth() - ansi.StringWidth(label)) / 2
@@ -359,10 +371,17 @@ func (m Model) contentRows() []string {
 		rows[inputStart+i] = row(text, true)
 	}
 	if statusHeight > 0 {
-		status := paint("GPT-6.1 Terra medium", "#E8BD37") + " · " + paint("0 in", "#C18B9E") + " · " + paint("weekly 88% left", "#C18B9E") + " · " + paint("5h 100% left", "#C18B9E")
+		var parts []string
 		if m.conversationID != "" {
-			status = "Conversation " + strings.ReplaceAll(safeRemote(m.conversationID), "\n", `\n`) + " · " + status
+			parts = append(parts, "Conversation "+strings.ReplaceAll(safeRemote(m.conversationID), "\n", `\n`))
 		}
+		if strings.TrimSpace(m.modelName) != "" {
+			parts = append(parts, paint(strings.ReplaceAll(safeRemote(m.modelName), "\n", `\n`), "#E8BD37"))
+		}
+		if usage := m.usage.label(); usage != "" {
+			parts = append(parts, paint(usage, "#C18B9E"))
+		}
+		status := strings.Join(parts, " · ")
 		rows[m.height-1] = row(status, false)
 	}
 	return rows

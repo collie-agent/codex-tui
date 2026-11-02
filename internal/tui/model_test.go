@@ -52,10 +52,8 @@ func TestInitialLayoutAndResize(t *testing.T) {
 		if !strings.Contains(lines[len(lines)-3], "Ask Codex to do anything") {
 			t.Fatal("input is not anchored at bottom")
 		}
-		for _, text := range []string{"GPT-6.1 Terra medium", "0 in", "weekly 88% left", "5h 100% left"} {
-			if !strings.Contains(lines[len(lines)-1], text) {
-				t.Fatalf("missing status %q", text)
-			}
+		if strings.TrimSpace(lines[len(lines)-1]) != "" {
+			t.Fatal("status should be empty before data arrives")
 		}
 	}
 }

@@ -10,7 +10,7 @@ import (
 // truth for selection, scrolling and tool hit testing.
 func styleOutput(row outputRow, text string) string {
 	base := lipgloss.NewStyle().Background(lipgloss.Color(background)).Foreground(lipgloss.Color(foreground))
-	if row.toggle != nil {
+	if row.toggle != nil || strings.HasPrefix(text, "• Working (") || strings.HasPrefix(text, "Worked for ") || strings.HasPrefix(text, "Interrupted after ") {
 		return base.Foreground(lipgloss.Color(muted)).Render(text)
 	}
 	if strings.HasPrefix(text, "Error:") {
