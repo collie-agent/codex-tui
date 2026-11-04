@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func TestUsageBetweenDeltaAndFinalText(t *testing.T) {
+func TestUsagePreservesIdenticalTextInNextAttempt(t *testing.T) {
 	m := New(".")
 	m.width, m.height, m.taskID = 80, 20, "test"
 	for _, event := range []taskEvent{
@@ -19,12 +19,14 @@ func TestUsageBetweenDeltaAndFinalText(t *testing.T) {
 	} {
 		m.applyEvent(event)
 	}
-	if got := strings.Count(ansi.Strip(m.View().Content), "hello"); got != 1 {
+	// Streaming deltas and complete text are mutually exclusive within an
+	// attempt. After usage, identical text belongs to the next attempt.
+	if got := strings.Count(ansi.Strip(m.View().Content), "hello"); got != 2 {
 		t.Fatalf("response rendered %d times", got)
 	}
 	// Identical text in a later response must remain visible as a separate response.
 	m.applyEvent(taskEvent{Type: "answer_delta", Delta: `{"text":"hello"}`})
-	if got := strings.Count(ansi.Strip(m.View().Content), "hello"); got != 2 {
+	if got := strings.Count(ansi.Strip(m.View().Content), "hello"); got != 3 {
 		t.Fatalf("later response lost: %d", got)
 	}
 }

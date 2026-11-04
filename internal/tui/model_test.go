@@ -43,8 +43,8 @@ func TestInitialLayoutAndResize(t *testing.T) {
 	for _, size := range [][2]int{{120, 30}, {100, 20}, {120, 40}} {
 		model = resize(t, model, size[0], size[1])
 		lines := strings.Split(ansi.Strip(model.View().Content), "\n")
-		if !strings.Contains(lines[1], "OpenAI Codex (v0.165.0)") || !strings.Contains(lines[2], "/workspace/项目") {
-			t.Fatal("missing header or actual directory")
+		if strings.TrimSpace(lines[1]) != "" || strings.TrimSpace(lines[2]) != "" {
+			t.Fatal("expected empty top rows")
 		}
 		if strings.TrimSpace(lines[3]) != "" {
 			t.Fatal("expected flexible blank space")
@@ -89,19 +89,6 @@ func TestControlKeys(t *testing.T) {
 	if _, ok := cmd().(tea.QuitMsg); !ok {
 		t.Fatal("Ctrl+D did not request exit")
 	}
-}
-
-func TestDirectoryControlsAreVisibleAndCopyable(t *testing.T) {
-	const path = "/项目/a\nb\tc\r\x1b[31m\u2028"
-	const visible = `/项目/a\nb\tc\r\x1b[31m\u2028`
-	model := resize(t, tui.New(path), 80, 10)
-	lines := strings.Split(ansi.Strip(model.View().Content), "\n")
-	if strings.TrimRight(lines[2], " ") != "  "+visible {
-		t.Fatalf("directory = %q", lines[2])
-	}
-	model = drag(t, model, [2]int{2, 2}, [2]int{79, 2})
-	copySelection(t, model, visible)
-	resize(t, model, 20, 10)
 }
 
 func TestCursorTracksInputOnShortScreens(t *testing.T) {

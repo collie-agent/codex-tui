@@ -25,6 +25,10 @@ const (
 
 // Model implements Bubble Tea's model; terminal dimensions arrive as events.
 type Model struct {
+	agents                map[string]Model
+	agentOrder            []string
+	activeAgent           string
+	readOnly              bool
 	modelName             string
 	usage                 tokenUsage
 	directory             string
@@ -79,6 +83,46 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// The root owns transport and task commands; each agent owns its reading state.
+	if key, ok := msg.(tea.KeyPressMsg); ok && len(m.agentOrder) > 0 && (key.String() == "tab" || key.String() == "shift+tab") {
+		m.switchAgent(key.String() == "shift+tab")
+		return m, nil
+	}
+	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		for name, agent := range m.agents {
+			updated, _ := agent.Update(size)
+			m.agents[name] = updated.(Model)
+		}
+	}
+	if m.activeAgent != "" {
+		switch msg.(type) {
+		case tea.KeyPressMsg, tea.PasteMsg, tea.MouseWheelMsg, tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg:
+			if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+d" {
+				m.Close()
+				return m, tea.Quit
+			}
+			agent := m.agents[m.activeAgent]
+			updated, cmd := agent.Update(msg)
+			m.agents[m.activeAgent] = updated.(Model)
+			return m, cmd
+		}
+	}
+	if m.readOnly {
+		switch input := msg.(type) {
+		case tea.PasteMsg:
+			return m, nil
+		case tea.KeyPressMsg:
+			// Reuse all reading gestures, but never create or interrupt a task here.
+			switch input.String() {
+			case "pgup", "pgdown", "ctrl+c", "ctrl+d":
+			case "esc":
+				m.followOutput()
+				return m, nil
+			default:
+				return m, nil
+			}
+		}
+	}
 	switch msg := msg.(type) {
 	case historyMessage:
 		return m.finishHistory(msg)
@@ -243,10 +287,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() tea.View {
+	if m.activeAgent != "" {
+		return m.agents[m.activeAgent].View()
+	}
 	view := tea.NewView(m.highlight(m.render()))
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
-	if m.width > 0 && m.height > 0 {
+	if !m.readOnly && m.width > 0 && m.height > 0 {
 		_, x := m.input.display(m.contentWidth())
 		x += m.margin()
 		layout := m.layout()
@@ -315,12 +362,6 @@ func (m Model) contentRows() []string {
 	}
 	layout := m.layout()
 	inputHeight, statusHeight, inputStart := layout.inputHeight, layout.statusHeight, layout.inputStart
-	header := []string{"", paint(">_", "#59A9ED") + " " + base.Foreground(lipgloss.Color("#EEEEEE")).Bold(true).Render("OpenAI Codex") + " (v0.165.0)", m.directory}
-	for i, text := range header {
-		if i < inputStart {
-			rows[i] = row(text, false)
-		}
-	}
 	if m.taskID != "" && inputStart > 0 {
 		output := m.outputRows()
 		start, end := m.outputRange(len(output))
@@ -364,6 +405,9 @@ func (m Model) contentRows() []string {
 		text := ""
 		if i == inputHeight/2 {
 			text, _ = m.input.display(m.contentWidth())
+			if m.readOnly {
+				text = "Read only · Tab / Shift+Tab to switch agents"
+			}
 			if m.input.text != "" {
 				text = base.Background(lipgloss.Color(inputBackground)).Foreground(lipgloss.Color(foreground)).Render(text)
 			}

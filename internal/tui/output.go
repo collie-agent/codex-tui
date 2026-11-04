@@ -22,8 +22,22 @@ func safeRemote(text string) string {
 	return out.String()
 }
 func (m *Model) applyEvent(event taskEvent) {
+	if m.routeAgentEvent(event) {
+		return
+	}
 	var delta struct{ Text string }
 	switch event.Type {
+	case "agent_switch":
+		var transition struct {
+			Source      string `json:"src_agent_name"`
+			Destination string `json:"dst_agent_name"`
+		}
+		if json.Unmarshal([]byte(event.Delta), &transition) != nil || strings.TrimSpace(transition.Source) == "" || strings.TrimSpace(transition.Destination) == "" {
+			return
+		}
+		// A handoff is a separate reading item; later deltas must not merge into it.
+		m.appendResponse("从" + transition.Source + "切换到" + transition.Destination)
+		m.streaming, m.textInterrupted = false, false
 	case "task_info":
 		var info struct {
 			ModelName string `json:"model_name"`
@@ -90,6 +104,9 @@ func (m *Model) applyEvent(event taskEvent) {
 		var usage tokenUsage
 		if json.Unmarshal([]byte(event.Delta), &usage) == nil {
 			m.usage.add(usage)
+			// Usage ends one HTTP attempt, not the task. Preserve its text and
+			// start a new reading item for the next attempt (including retries).
+			m.streaming, m.textInterrupted = false, false
 		}
 	case "task_completed", "task_interrupted":
 		m.finishTimer(event.Type == "task_completed")

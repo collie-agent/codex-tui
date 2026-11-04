@@ -27,7 +27,8 @@ func TestCtrlCCopiesSelectionToSystemClipboard(t *testing.T) {
 	t.Setenv("WAYLAND_DISPLAY", "")
 	t.Setenv("COPY_TEST_DESTINATION", destination)
 	model := resize(t, tui.New("/项目"), 80, 10)
-	model = drag(t, model, [2]int{2, 2}, [2]int{6, 2})
+	model = edit(t, model, tea.PasteMsg{Content: "/项目"})
+	model = drag(t, model, [2]int{4, 7}, [2]int{8, 7})
 	_, cmd := model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("missing copy command")

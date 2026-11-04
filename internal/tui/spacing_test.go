@@ -31,7 +31,7 @@ func TestAllTextUsesTwoCellMarginsAndInputCaret(t *testing.T) {
 		t.Fatalf("input caret not offset by margin: %+v", m.View().Cursor)
 	}
 	rows := strings.Split(ansi.Strip(m.View().Content), "\n")
-	if !strings.HasPrefix(rows[1], "  >_") || !strings.HasPrefix(rows[2], "  /项目") || strings.TrimSpace(rows[14]) != "" {
+	if strings.TrimSpace(rows[1]) != "" || strings.TrimSpace(rows[2]) != "" || strings.TrimSpace(rows[14]) != "" {
 		t.Fatalf("inconsistent text origins:\n%s", visible(m))
 	}
 }

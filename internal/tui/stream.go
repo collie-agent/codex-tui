@@ -45,7 +45,12 @@ type streamMessage struct {
 	event     *taskEvent
 	err       error
 }
-type taskEvent struct{ ID, Type, Delta string }
+type taskEvent struct {
+	ID, Type, Delta       string
+	AgentName             string `json:"agent_name"`
+	AgentInstanceID       string `json:"agent_instance_id"`
+	ParentAgentInstanceID string `json:"parent_agent_instance_id"`
+}
 type subscription struct {
 	mu       sync.Mutex
 	cursor   string
