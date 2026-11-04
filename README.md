@@ -1,214 +1,119 @@
 # codex-tui
 
-A Bubble Tea v2 terminal interface for Codex tasks.
+基于 [Bubble Tea](https://github.com/charmbracelet/bubbletea) 构建的 [codex-go](https://github.com/collie-agent/codex-go) 终端交互界面，用于提交任务、阅读实时响应、查看工具调用并继续会话。
 
-## Features
+## 快速开始
 
-- **Live task output:** submit tasks to the local task server and read assistant
-  responses and tool activity over SSE. Interrupted connections reconnect and
-  events with previously received IDs are skipped to avoid duplicate output.
-- **Conversation continuity:** keep subsequent tasks in the same conversation,
-  or load saved runs with `--conv-id` before continuing the conversation.
-- **Interruption and drafts:** press Esc to request interruption and prepare the
-  next input while a task is running. Submit the draft once the current task has
-  finished and the server has confirmed its conversation.
-- **Task timing:** a live `Working (7s • esc to interrupt)` indicator updates
-  every second, with a blank row above and below. Completed tasks retain
-  `Worked for 3m 3s • 11:25 AM` in their output.
-- **Expandable tool calls:** consecutive calls form a tool call region, grouped
-  by tool name in the collapsed view. Click `+ expand` to inspect each call's
-  arguments, status and results; click `− collapse` to return to summaries.
-- **Output navigation:** scroll with the mouse wheel or PgUp/PgDn, return to the
-  latest output with the return-to-bottom button, and click a pinned task goal
-  to jump back to its original text. Task goals appear as full-width gray cards.
-- **Unicode editing and copying:** edit Chinese text, combining characters and
-  emoji without splitting characters; select visible text with the mouse and
-  copy through desktop clipboard helpers or OSC 52.
-- **Model and token usage:** the status row shows the conversation ID, the model
-  name reported by the server, and accumulated input, cached input and output
-  token counts received during the current instance. Counts are displayed in
-  whole thousands (`K`, rounded down); unknown counts are omitted. Loading saved
-  runs does not reconstruct historical usage totals.
+### 环境准备
 
-## Quick start
+- Go 1.27.3 或更高版本。
+- 支持交互输入的终端；推荐使用支持真彩色和鼠标事件的终端。
+- 已启动的 codex-go 任务服务，监听 `http://localhost:8080`。服务端的安装与配置请参阅 [codex-go](https://github.com/collie-agent/codex-go)。当前命令行未提供修改服务地址的参数。
 
-Run from the directory you want displayed in the header:
+### 安装与启动
+
+安装后，在希望显示于界面标题中的工作目录启动：
 
 ```sh
-go run github.com/collie-agent/codex-tui
+go install github.com/collie-agent/codex-tui@latest
+codex-tui
 ```
 
-When working in this repository, use `go run .`. Requires Go 1.27.3 or later
-and an interactive terminal. True color terminals give the closest match to
-`prd/init.png`; terminals with fewer colors may approximate the palette.
-
-Press **Ctrl+D** to exit. Drag with the left mouse button to select visible text,
-then press **Ctrl+C** to copy it. With no selection, Ctrl+C does nothing.
-Task requests require a running task server at `http://localhost:8080`:
-Enter sends the input to `POST /tasks` and subscribes to the returned task's SSE output.
-The input supports single-line typing and pasting, Backspace/Delete, Left/Right
-and Home/End. Long input scrolls horizontally with the caret. Pasted line breaks
-and tabs become spaces. While a task is being created or running, you can edit
-the next draft; Enter submits it after the current task completes and confirms
-its conversation. Creation failures retain the input for manual retry.
-
-Once a task has started, press **Esc** to request interruption, even while editing
-a draft or reading earlier output. The request being accepted does not mean the
-run has stopped: wait for the Interrupted confirmation before pressing Enter to
-submit the draft. Continuing creates a new run in the same conversation; it does
-not resume the original execution position. Interruption does not undo operations
-already performed by tools.
-
-Tasks within one running instance share a conversation. The first task establishes
-the conversation, and the status row shows its ID. To continue an existing
-conversation in a new instance:
+请确保 Go 的可执行文件安装目录已加入 `PATH`。也可以克隆仓库后直接运行：
 
 ```sh
+git clone https://github.com/collie-agent/codex-tui.git
+cd codex-tui
+go run .
+```
+
+输入任务后按 **Enter** 提交，响应和工具执行信息会实时显示。任务运行时可编辑下一条输入；待当前任务结束且服务端确认会话后，再按 Enter 提交。按 **Ctrl+D** 退出。
+
+继续已有会话：
+
+```sh
+codex-tui --conv-id=YOUR_CONVERSATION_ID
+# 在源码目录中运行
 go run . --conv-id=YOUR_CONVERSATION_ID
 ```
 
-This loads all saved agent runs in the conversation, including goals, results,
-errors and expandable tool calls, without starting or resuming a task.
-Loading failures appear in the task header and preserve your input draft.
-Running runs show their persisted snapshot; this does not subscribe to live updates.
-Every submitted task uses the specified conversation and must receive matching
-conversation information from the server. A missing or conflicting confirmation
-blocks further submission and displays the reason. An accepted queue request
-alone does not confirm the conversation or task completion. The server continues
-previous run results and errors; the displayed snapshot contains only persisted data.
-Omitting `--conv-id`, or passing an empty value, starts a new conversation on the
-first submission. Conversation identity is retained only for the current process.
-The old `--task-id` startup option is no longer accepted.
+会话 ID 显示在状态栏中。不传 `--conv-id` 时，首次提交会创建新会话。
 
-## Controls
+## 特性
 
-| Key / action | Behavior |
+- **实时任务输出**：通过 SSE 接收助手响应和工具事件，连接断开后自动重连，并按事件 ID 去重。
+- **连续会话**：同一实例内的后续任务共享会话，也可通过会话 ID 加载历史记录后继续工作。
+- **任务中断与草稿**：运行时可请求中断，同时准备下一条任务输入。
+- **工具调用可展开**：连续工具调用按区域展示，折叠时按工具名分组，展开后查看参数、状态和结果。
+- **子 Agent 视图**：收到子 Agent 事件后，可切换至独立的只读视图，查看其输出与运行状态。
+- **长输出阅读**：支持鼠标滚动、翻页、返回底部和任务目标置顶定位。
+- **Unicode 输入与复制**：支持中文、组合字符和 emoji 编辑，以及鼠标选中文本后复制。
+- **运行状态可见**：显示任务计时、会话 ID、模型名称和当前实例累计的 Token 用量。
+
+## 功能
+
+### 任务与会话
+
+按 Enter 将输入提交至任务服务。任务创建或运行期间，新的输入会作为草稿保留，不会自动排队提交；创建失败时，已提交的输入会恢复，方便手动重试。
+
+在主视图按 **Esc** 请求中断当前任务。请求被接受后，仍需等待 `Interrupted` 确认，再提交下一条输入。中断后的继续会在原会话中创建新任务；已执行的工具操作不会回滚。
+
+使用 `--conv-id` 启动会加载该会话全部已保存的运行记录，包括任务目标、结果、错误和可展开的工具调用。加载历史本身不会启动任务；对于仍在运行的记录，仅显示已保存的快照，不订阅其实时输出。若服务端未确认当前任务所属会话，或返回的会话 ID 冲突，界面会显示原因并阻止继续提交。
+
+### 工具调用与输出导航
+
+点击 `+ expand` 展开工具调用区，查看每次调用的参数、执行状态和结果；点击 `− collapse` 收起明细。
+
+使用鼠标滚轮或 **PgUp / PgDn** 阅读输出，滚动后暂停自动跟随。点击返回底部按钮恢复跟随。任务目标滚出可视区域后，会显示在顶部的灰色固定栏中；点击它可跳回原始目标，拖动则可选中文本。
+
+### 子 Agent 视图
+
+当服务端发送带有 Agent 名称和父 Agent 实例信息的子 Agent 事件时，界面会为其建立独立视图。按 **Tab** 正向切换主视图与子 Agent 视图，按 **Shift+Tab** 反向切换；各视图独立保留阅读状态。
+
+子 Agent 视图支持滚动、展开工具调用、选中和复制文本。提交任务和请求中断需切回主视图。
+
+### 输入与剪贴板
+
+输入区支持左右移动光标、Home / End、Backspace / Delete 和粘贴。删除操作以完整字符为单位，长输入随光标水平滚动；粘贴的换行和制表符会转换为空格。
+
+按住鼠标左键拖动选中文本，再按 **Ctrl+C** 复制。只复制当前可见的选中内容，保留换行并去除行尾布局空格；没有选中内容时，Ctrl+C 不执行操作。
+
+复制支持以下方式：
+
+| 环境 | 条件 |
 | --- | --- |
-| Enter | Submit the input when no task is active and conversation confirmation permits it. |
-| Esc | Request interruption of the current task; when no task is active, return to the bottom if the return button is visible. |
-| Ctrl+D | Exit the TUI. |
-| Left / Right, Home / End | Move the input caret. |
-| Backspace / Delete | Delete the previous / next whole character. |
-| Mouse wheel, PgUp / PgDn | Scroll task output and pause automatic following. |
-| Click return-to-bottom | Resume following the latest output. |
-| Click pinned task goal | Jump to the original goal and pause following. |
-| Click `+ expand` / `− collapse` | Toggle tool call details. |
-| Left-button drag, then Ctrl+C | Select and copy visible text. |
+| Linux / Wayland | 安装 `wl-copy`（`wl-clipboard`），并可访问 `WAYLAND_DISPLAY` 对应的桌面会话。 |
+| Linux / X11、XWayland | 安装 `xclip` 或 `xsel`，并可访问 `DISPLAY` 对应的桌面会话。 |
+| macOS | 可使用系统的 `pbcopy` 命令。 |
+| 支持 OSC 52 的终端 | 终端允许剪贴板写入；SSH、tmux 等环境需允许相应序列透传。 |
 
-## Selection and clipboard
+程序会尝试桌面剪贴板工具，并发送 OSC 52 复制请求。终端可能忽略该请求，可通过粘贴到其他应用确认是否成功。
 
-Selection covers the title, directory, visible input (including its placeholder),
-and status. Drag in either direction or across rows. Both cells of a wide
-character select the whole character. Endpoints are inclusive; clicking without
-dragging clears the selection. Editing, moving the input caret, pasting, or
-resizing also clears it. Copy preserves intervening newlines and omits trailing
-layout spaces. Long input copies only the portion currently visible.
+### 计时与用量
 
-To copy, drag with the mouse until the text is highlighted, then press Ctrl+C.
-The terminal must deliver mouse drag events and Ctrl+C to the application.
-Clicking without dragging does not create a selection.
+任务创建成功并开始订阅输出后，界面显示 `Working` 计时，每秒刷新。任务结束后保留耗时和本地完成时间，中断时显示 `Interrupted after`。阅读早期输出时，返回底部按钮会替代实时计时提示。
 
-Copy requires at least one working clipboard path:
+状态栏显示服务端报告的模型名称，以及当前实例收到的累计输入、缓存输入和输出 Token 数量。数量以 `K` 为单位向下取整，未知值不显示；加载历史记录不会重建历史 Token 用量或计时。
 
-| Environment | Required tool and conditions |
+### 快捷键
+
+| 按键 / 操作 | 功能 |
 | --- | --- |
-| Linux / Wayland | `wl-copy` from `wl-clipboard` must be on `PATH`; `WAYLAND_DISPLAY` must be set and the process must have access to that compositor session. |
-| Linux / X11 or XWayland | `xclip` or `xsel` must be on `PATH`; `DISPLAY` must be set and the process must have access to that X server. The app writes the CLIPBOARD selection. |
-| macOS | The system `pbcopy` command must be on `PATH` and have access to the desktop clipboard. |
-| Terminal clipboard (OSC 52) | The terminal must support and permit OSC 52 clipboard writes. SSH and terminal multiplexers such as tmux must pass these sequences through. This is also the available path on platforms without a supported desktop helper. |
+| Enter | 当前任务结束且会话允许提交时，发送输入。 |
+| Esc | 主视图中请求中断当前任务；无活动任务时返回底部。子 Agent 视图中返回底部。 |
+| Ctrl+D | 退出程序。 |
+| Tab / Shift+Tab | 存在子 Agent 时，正向 / 反向切换视图。 |
+| Left / Right、Home / End | 移动输入光标。 |
+| Backspace / Delete | 删除光标前 / 后的完整字符。 |
+| 鼠标滚轮、PgUp / PgDn | 滚动输出并暂停自动跟随。 |
+| 点击返回底部按钮 | 恢复跟随最新输出。 |
+| 点击固定的任务目标 | 跳回原始任务目标。 |
+| 点击 `+ expand` / `− collapse` | 展开 / 收起工具调用明细。 |
+| 鼠标左键拖动，随后 Ctrl+C | 选中并复制可见文本。 |
 
-The app tries `wl-copy` first when `WAYLAND_DISPLAY` is set, then `xclip` and
-`xsel` when `DISPLAY` is set. On macOS it tries `pbcopy`. Desktop helper attempts
-run asynchronously with a shared two-second timeout. The app also sends an
-OSC 52 request after those attempts, even if a desktop helper succeeded.
-Neither installing a helper without access to its display session nor setting
-a display variable alone is sufficient.
-
-For Debian/Ubuntu, install the helper matching your desktop session:
-
-```sh
-sudo apt install wl-clipboard  # Wayland
-sudo apt install xclip         # X11 / XWayland; xsel is another option
-```
-
-If copying fails, check that the selection is highlighted, that the matching
-helper is available on `PATH`, and that the app can access the desktop session.
-For SSH, a desktop helper runs on the remote machine; copying to your local
-clipboard requires OSC 52 support in your local terminal and passthrough along
-the connection. A terminal can silently ignore OSC 52, so sending the request
-does not confirm that the clipboard changed. Verify by pasting into another
-application.
-
-## Manual verification
-
-To repeat the editing demo in an interactive terminal:
-
-1. Run `go run .` and check the empty hint `Ask Codex to do anything`.
-2. Type or paste `Hello 中文👩‍💻`. Press Backspace once to delete the whole emoji,
-   then delete the remaining text and check that the hint returns.
-3. Type `A中B`, press Left, then Backspace, then type `文`: the input becomes
-   `A文B`. Try Home, Right, Delete and End to move and edit within the line.
-4. Paste a long line, such as `中文 hello ` repeated 20 times. Narrow the terminal
-   to about 20 columns, append and delete text, and use Home/End to inspect both
-   ends. Widen it again and check the full text is retained. The gray input area
-   stays above the status row throughout.
-5. With a task server running on port 8080, press Enter to submit a task and
-   check that its output appears. Edit the next draft while it runs; repeated
-   Enter must not create another task until completion and conversation confirmation.
-   Press Ctrl+D to exit and check that the normal terminal is restored.
-
-To check selection and the actual system clipboard with one of the paths above:
-
-1. Run `go run .`, drag over `OpenAI Codex`, and check its selection highlight.
-   Press Ctrl+C and paste into another application; expect exactly `OpenAI Codex`.
-2. Repeat in reverse, then select from the title into the directory and check
-   that the pasted text contains the same rows without colors or escape codes.
-3. Type `A中文👩‍💻B`, select Chinese/emoji text (try either half of a wide
-   character), copy, and paste elsewhere. Check whole characters and no corruption.
-4. Select status text and repeat. Try a long, horizontally scrolled input and
-   a narrow terminal; only visible selected text should be copied.
-5. Click without dragging and press Ctrl+C. The clipboard should stay unchanged
-   and the app should stay running. Repeat with a selection, then Ctrl+D to exit.
-
-Clipboard verification on 2026-10-29: Ubuntu/X11 via XWayland (`DISPLAY=:0`),
-xterm 390 (`TERM=xterm-256color`, 100×24, `allowWindowOps: true` to permit OSC 52).
-The built application received Unicode input and SGR mouse drag events selecting
-`中文`. Ctrl+C updated the real system clipboard (independently read with `xclip`),
-and xterm's `insert-selection(CLIPBOARD)` pasted exactly `中文` into a separate
-Python receiver after the app exited. Ctrl+D exited with code 0, left the alternate
-screen, and restored the app PTY's original terminal attributes. This verifies
-real clipboard transfer and paste; mouse events were injected, and graphical
-appearance was not manually inspected. Automated tests check OSC 52 request messages and exercise the desktop-helper
-path with a controlled executable; they do not access the real system clipboard.
-
-## Development checks
-
-Run checks with:
+## 开发检查
 
 ```sh
 go test ./...
 go vet ./...
 ```
-
-## Reading task output
-
-Use the mouse wheel to scroll task output, or PgUp/PgDn to move by a page with
-one row of overlap. Scrolling pauses automatic following; use the return-to-bottom
-button to resume. Once a run's goal scrolls out of view, it stays in a gray bar
-below the task status. The bar follows the run currently being read, including
-historical runs, and supports text selection and copying. Long goals are shortened
-to fit one row; click the pinned goal to jump to its original text and pause
-automatic following. Dragging over the pinned goal still selects text for copying.
-
-Submitted task goals appear as full-width gray cards with a `›` prefix, light
-text, and one blank row above and below. Long goals wrap within the text margins.
-Saved run goals use the same style, with run metadata shown separately.
-
-The timer starts when task creation succeeds and the app begins subscribing to
-output. Each task starts a new timer. Completion records show elapsed whole
-seconds and the local completion time; interrupted tasks show `Interrupted after`
-instead. Connection errors do not stop the timer or confirm completion. Saved run
-snapshots do not reconstruct historical timing.
-
-While reading earlier output, the return-to-bottom button replaces the live timer.
-Very short terminals omit the live indicator to preserve room for task output.
