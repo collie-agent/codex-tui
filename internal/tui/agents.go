@@ -2,23 +2,29 @@ package tui
 
 import "encoding/json"
 
+// Both SSE routing and saved history use the same per-instance reading model.
+func (m *Model) agentView(id, name string) Model {
+	if m.agents == nil {
+		m.agents = make(map[string]Model)
+	}
+	if agent, exists := m.agents[id]; exists {
+		return agent
+	}
+	agent := New(m.directory)
+	agent.readOnly = true
+	agent.width, agent.height = m.width, m.height
+	agent.taskID = name + " · " + id
+	agent.connection = "Running"
+	m.agentOrder = append(m.agentOrder, id)
+	return agent
+}
+
 // Instance IDs isolate independent delegations; names are display labels only.
 func (m *Model) routeAgentEvent(event taskEvent) bool {
 	if event.AgentInstanceID == "" || event.ParentAgentInstanceID == "" || event.Type == "task_info" || event.Type == "task_completed" || event.Type == "task_interrupted" {
 		return false
 	}
-	if m.agents == nil {
-		m.agents = make(map[string]Model)
-	}
-	agent, exists := m.agents[event.AgentInstanceID]
-	if !exists {
-		agent = New(m.directory)
-		agent.readOnly = true
-		agent.width, agent.height = m.width, m.height
-		agent.taskID = event.AgentName + " · " + event.AgentInstanceID
-		agent.connection = "Running"
-		m.agentOrder = append(m.agentOrder, event.AgentInstanceID)
-	}
+	agent := m.agentView(event.AgentInstanceID, event.AgentName)
 	// Clear routing metadata before handing content to the shared conversation view.
 	content := event
 	content.AgentName, content.AgentInstanceID, content.ParentAgentInstanceID = "", "", ""
