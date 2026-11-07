@@ -6,7 +6,10 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
+
+type answerChunk struct{ index, bytes int }
 
 // Remote controls are escaped before any styling, wrapping or clipboard access.
 func safeRemote(text string) string {
@@ -74,12 +77,48 @@ func (m *Model) applyEvent(event taskEvent) {
 			return
 		}
 		// Answer deltas are decoded by the server.
+		if m.attemptEnded {
+			m.attemptChunks = nil
+			m.attemptEnded = false
+		}
 		if !m.streaming || m.textInterrupted {
 			m.appendResponse("")
 			m.streaming = true
 			m.textInterrupted = false
 		}
 		m.responses[len(m.responses)-1] += delta.Text
+		m.attemptChunks = append(m.attemptChunks, answerChunk{len(m.responses) - 1, len(delta.Text)})
+	case "output_reset":
+		var reset struct {
+			AnswerBytes int `json:"answer_bytes"`
+		}
+		if json.Unmarshal([]byte(event.Delta), &reset) != nil || reset.AnswerBytes < 0 {
+			return
+		}
+		remaining := reset.AnswerBytes
+		for _, chunk := range m.attemptChunks {
+			remaining -= chunk.bytes
+		}
+		if remaining > 0 {
+			return
+		}
+		// Validate the entire rollback before changing any visible text.
+		retracted := append([]string(nil), m.responses...)
+		remaining = reset.AnswerBytes
+		for i := len(m.attemptChunks) - 1; i >= 0 && remaining > 0; i-- {
+			chunk := m.attemptChunks[i]
+			n := min(remaining, chunk.bytes)
+			s := retracted[chunk.index]
+			if n > len(s) || !utf8.ValidString(s[:len(s)-n]) {
+				return
+			}
+			retracted[chunk.index] = s[:len(s)-n]
+			remaining -= n
+		}
+		m.responses = retracted
+		m.attemptChunks = nil
+		m.attemptEnded = false
+		m.streaming, m.textInterrupted = false, false
 	case "text":
 		if err := json.Unmarshal([]byte(event.Delta), &delta); err != nil {
 			m.connection = "Connection error: invalid text Delta"
@@ -100,6 +139,9 @@ func (m *Model) applyEvent(event taskEvent) {
 		}
 		m.applyTool(event)
 	case "usage":
+		// Usage can precede validation failure and output_reset. Keep rollback
+		// records until the next request starts emitting its answer.
+		m.attemptEnded = true
 		// Usage is per HTTP attempt, not a task completion signal or cumulative total.
 		var usage tokenUsage
 		if json.Unmarshal([]byte(event.Delta), &usage) == nil {

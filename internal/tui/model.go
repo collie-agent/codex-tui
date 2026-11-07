@@ -51,6 +51,8 @@ type Model struct {
 	conversationConfirmed bool
 	conversationError     string
 	responses             []string
+	attemptChunks         []answerChunk
+	attemptEnded          bool
 	streaming             bool
 	textInterrupted       bool
 	viewport              outputViewport
