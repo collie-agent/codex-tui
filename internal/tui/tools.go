@@ -164,7 +164,30 @@ func (m Model) outputLayout() []outputRow {
 				}
 			}
 			if patch != "" {
-				appendText(patch)
+				// File headers become readable paths; retain patch markers for diff lines.
+				for _, line := range strings.Split(patch, "\n") {
+					if line == "*** Begin Patch" || line == "*** End Patch" {
+						continue
+					}
+					for _, prefix := range []string{"*** Update File: ", "*** Add File: ", "*** Delete File: "} {
+						line = strings.TrimPrefix(line, prefix)
+					}
+					color := ""
+					if strings.HasPrefix(line, "+") {
+						color = commandGreen
+					}
+					if strings.HasPrefix(line, "-") {
+						color = "#E06C75"
+					}
+					if strings.HasPrefix(line, "@@") {
+						color = actionBlue
+					}
+					for _, row := range wrap(line) {
+						row.accentEnd = len(row.text)
+						row.accentColor = color
+						rows = append(rows, row)
+					}
+				}
 				return
 			}
 		}
@@ -248,11 +271,17 @@ func (m Model) outputLayout() []outputRow {
 		}
 		// Ungrouped tools render one line per call; the rest stay grouped by name.
 		var ungrouped []*toolOutput
+		var patches []*toolOutput
 		var names []string
 		groups := make(map[string][]string)
 		readPaths := make(map[string]int)
 		for _, tool := range region.calls {
-			if tool.name == "apply_patch" || isCommandTool(tool.name) {
+			// Keep patch blocks after command summaries and grouped tool calls.
+			if tool.name == "apply_patch" {
+				patches = append(patches, tool)
+				continue
+			}
+			if isCommandTool(tool.name) {
 				ungrouped = append(ungrouped, tool)
 				continue
 			}
@@ -297,6 +326,10 @@ func (m Model) outputLayout() []outputRow {
 			label := strings.ReplaceAll(safeRemote(name), "\n", `\n`)
 			color := actionBlue
 			appendToolText(label+" "+strings.Join(groups[name], ", "), label, color)
+		}
+		for _, tool := range patches {
+			appendToolText(tool.name+toolStatusLabel(tool.status), tool.name, actionBlue)
+			appendArguments(tool)
 		}
 	}
 

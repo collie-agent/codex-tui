@@ -293,7 +293,7 @@ func TestReadFileSummaryDeduplicatesPathAndRetainsDetails(t *testing.T) {
 func TestApplyPatchShowsFilesAndPatchDetails(t *testing.T) {
 	m, _ := toolModel(t, toolFrame("tool_call", `{"call_id":"a","name":"apply_patch","arguments":{"patch":"*** Begin Patch\n*** Update File: a.txt\n@@\n-old\n+new\n*** Add File: b.txt\n+hello\n*** End Patch"}}`))
 	view := visible(m)
-	if !strings.Contains(view, "apply_patch a.txt, b.txt") || strings.Contains(view, "+hello") {
+	if !strings.Contains(view, "apply_patch") || !strings.Contains(strings.Join(strings.Fields(view), " "), "a.txt @@ -old +new b.txt +hello") {
 		t.Fatalf("incorrect patch summary: %s", view)
 	}
 	m = clickTool(t, m, "+ expand")
@@ -306,9 +306,30 @@ func TestApplyPatchDetailsShowRawPatchLines(t *testing.T) {
 	m, _ := toolModel(t, toolFrame("tool_call", `{"call_id":"a","name":"apply_patch","arguments":{"patch":"*** Begin Patch\n*** Update File: a.txt\n@@ hug\n-old\n+new\n*** End Patch"}}`))
 	m = clickTool(t, m, "+ expand")
 	view := visible(m)
-	for _, want := range []string{"*** Update File: a.txt", "@@ hug", "-old", "+new"} {
+	for _, want := range []string{"a.txt", "@@ hug", "-old", "+new"} {
 		if strings.Count(view, want) != 1 {
 			t.Fatalf("patch line %q rendered %d times: %s", want, strings.Count(view, want), view)
+		}
+	}
+}
+
+func TestApplyPatchFollowsEarlierToolCalls(t *testing.T) {
+	m, _ := toolModel(t,
+		toolFrame("tool_call", `{"call_id":"r","name":"read_file","arguments":{"path":"source.go"}}`),
+		toolFrame("tool_call", `{"call_id":"s","name":"exec_command","arguments":{"cmd":"pwd"}}`),
+		toolFrame("tool_call", `{"call_id":"p","name":"apply_patch","arguments":{"patch":"*** Begin Patch\n*** Add File: result.go\n+package result\n*** End Patch"}}`),
+	)
+	for _, expanded := range []bool{false, true} {
+		if expanded {
+			m = clickTool(t, m, "+ expand")
+		}
+		view := visible(m)
+		patch := strings.Index(view, "apply_patch")
+		for _, name := range []string{"read_file", "exec_command"} {
+			pos := strings.Index(view, name)
+			if pos < 0 || patch < pos {
+				t.Fatalf("apply_patch must follow %s (expanded=%v):\n%s", name, expanded, view)
+			}
 		}
 	}
 }
