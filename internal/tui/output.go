@@ -28,6 +28,12 @@ func (m *Model) applyEvent(event taskEvent) {
 	if m.routeAgentEvent(event) {
 		return
 	}
+	// Only output-changing event families invalidate physical rows. Transport,
+	// usage and lifecycle metadata are rendered outside the output layout.
+	switch event.Type {
+	case "agent_switch", "assistant_delta", "answer_delta", "output_reset", "text", "tool_call", "tool_result", "tool_error":
+		m.invalidateOutputLayout()
+	}
 	var delta struct{ Text string }
 	switch event.Type {
 	case "agent_switch":
@@ -188,6 +194,7 @@ func (m *Model) appendRun(text, prompt string) {
 }
 
 func (m *Model) appendResponse(text string) {
+	m.invalidateOutputLayout()
 	if len(m.output) == 0 {
 		for i := range m.responses {
 			m.output = append(m.output, outputItem{response: i})

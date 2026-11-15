@@ -25,6 +25,8 @@ const (
 
 // Model implements Bubble Tea's model; terminal dimensions arrive as events.
 type Model struct {
+	streamFrame           *streamFrame
+	outputCache           *outputLayoutCache
 	agents                map[string]Model
 	agentOrder            []string
 	activeAgent           string
@@ -72,7 +74,7 @@ func New(directory string) Model {
 			safe.WriteRune(r)
 		}
 	}
-	return Model{directory: safe.String()}
+	return Model{directory: safe.String(), outputCache: &outputLayoutCache{}}
 }
 func (m Model) Init() tea.Cmd {
 	if m.history != nil {
@@ -85,6 +87,11 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if wake, ok := msg.(streamRefreshMessage); ok && (wake.source != m.stream || m.completed) {
+		return m, nil
+	}
+	m.forkStreamFrame(msg)
+	m.forkReadingState()
 	// The root owns transport and task commands; each agent owns its reading state.
 	if key, ok := msg.(tea.KeyPressMsg); ok && len(m.agentOrder) > 0 && (key.String() == "tab" || key.String() == "shift+tab") {
 		m.switchAgent(key.String() == "shift+tab")
@@ -132,21 +139,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.finishInterruption(msg)
 	case createMessage:
 		return m.finishCreation(msg)
+	case streamRefreshMessage:
+		if msg.source != m.stream || m.completed {
+			return m, nil
+		}
+		return m, m.nextStreamCommand()
 	case streamMessage:
 		if (msg.source != nil && msg.source != m.stream) || m.completed {
 			return m, nil
 		}
+		m.prepareStreamFrame(msg)
 		m.timerNow = time.Now()
 		if msg.tick {
-			return m, m.stream.next
+			return m, m.nextStreamCommand()
 		}
-		before := strings.Join(m.contentRows(), "\n")
+		before := m.selectionLayout()
 		if msg.err != nil {
 			// Transport recovery must never hide a conversation ownership failure.
 			if m.conversationError == "" {
 				m.connection = "Connection error: " + safeRemote(msg.err.Error())
 			}
-			return m, m.stream.next
+			return m, m.nextStreamCommand()
 		}
 		if msg.connected && m.conversationError == "" {
 			m.connection = "Connected · completion unconfirmed"
@@ -155,18 +168,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyEvent(*msg.event)
 			m.stream.acknowledge(*msg.event)
 		}
-		if before != strings.Join(m.contentRows(), "\n") {
-			m.selection = textSelection{}
-		}
+		m.clearChangedSelection(before)
 		if m.completed {
 			m.Close()
 			return m, nil
 		}
 		if m.interruptState == interruptDeferred && m.runID != "" {
 			updated, interruptCmd := m.requestInterruption()
-			return updated, tea.Batch(interruptCmd, m.stream.next)
+			return updated, tea.Batch(interruptCmd, m.nextStreamCommand())
 		}
-		return m, m.stream.next
+		return m, m.nextStreamCommand()
 	case tea.WindowSizeMsg:
 		m.selection = textSelection{}
 		oldRows := m.outputLayout()
@@ -192,7 +203,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Button == tea.MouseLeft && m.width > 0 && m.height > 0 {
 			buttonWidth := min(m.contentWidth(), ansi.StringWidth(returnButtonLabel))
 			buttonLeft := (m.width - buttonWidth) / 2
-			if m.returnButtonVisible(len(m.outputRows())) && msg.Y == m.layout().inputStart-1 && msg.X >= buttonLeft && msg.X < buttonLeft+buttonWidth {
+			if m.returnButtonVisible(len(m.outputLayout())) && msg.Y == m.layout().inputStart-1 && msg.X >= buttonLeft && msg.X < buttonLeft+buttonWidth {
 				m.followOutput()
 				return m, nil
 			}
@@ -213,8 +224,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selection.focus = m.mousePoint(msg.Mouse())
 			m.selection.dragging = false
 			if p := m.toolPress; p.tool != nil && !p.moved && msg.X == p.x && msg.Y == p.y && m.toolAt(msg.X, msg.Y) == p.tool {
-				start, _ := m.outputRange(len(m.outputRows()))
+				start, _ := m.outputRange(len(m.outputLayout()))
 				p.tool.expanded = !p.tool.expanded
+				m.invalidateOutputLayout()
 				m.viewport = outputViewport{top: start, paused: true}
 				m.clampOutput()
 				m.selection = textSelection{}
@@ -250,13 +262,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m.requestInterruption()
 			}
-			if m.returnButtonVisible(len(m.outputRows())) {
+			if m.returnButtonVisible(len(m.outputLayout())) {
 				m.followOutput()
 			}
 		case "pgup":
-			m.scrollOutput(-max(1, m.outputCapacity(len(m.outputRows()))-1))
+			m.scrollOutput(-max(1, m.outputCapacity(len(m.outputLayout()))-1))
 		case "pgdown":
-			m.scrollOutput(max(1, m.outputCapacity(len(m.outputRows()))-1))
+			m.scrollOutput(max(1, m.outputCapacity(len(m.outputLayout()))-1))
 		case "ctrl+d":
 			m.Close()
 			return m, tea.Quit
@@ -289,8 +301,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() tea.View {
+	if m.streamFrame != nil && m.streamFrame.view != nil {
+		return *m.streamFrame.view
+	}
 	if m.activeAgent != "" {
-		return m.agents[m.activeAgent].View()
+		view := m.agents[m.activeAgent].View()
+		if m.streamFrame != nil {
+			m.streamFrame.view = &view
+		}
+		return view
 	}
 	view := tea.NewView(m.highlight(m.render()))
 	view.AltScreen = true
@@ -300,6 +319,9 @@ func (m Model) View() tea.View {
 		x += m.margin()
 		layout := m.layout()
 		view.Cursor = tea.NewCursor(x, layout.inputStart+layout.inputHeight/2)
+	}
+	if m.streamFrame != nil {
+		m.streamFrame.view = &view
 	}
 	return view
 }
@@ -393,10 +415,10 @@ func (m Model) contentRows() []string {
 				rows[top+i] = row(styleOutput(visibleRows[start+i], text), false)
 			}
 		}
-		if m.timerVisible() && !m.returnButtonVisible(len(m.outputRows())) {
+		if m.timerVisible() && !m.returnButtonVisible(len(m.outputLayout())) {
 			rows[inputStart-2] = row("• Working ("+elapsedLabel(m.timerNow.Sub(m.startedAt))+" • esc to interrupt)", false)
 		}
-		if m.returnButtonVisible(len(m.outputRows())) {
+		if m.returnButtonVisible(len(m.outputLayout())) {
 			label := ansi.Truncate(returnButtonLabel, m.contentWidth(), "")
 			left := (m.contentWidth() - ansi.StringWidth(label)) / 2
 			button := base.Background(lipgloss.Color(inputBackground)).Foreground(lipgloss.Color("#59A9ED")).Render(label)

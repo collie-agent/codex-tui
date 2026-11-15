@@ -19,12 +19,12 @@ func (m Model) outputRange(total int) (int, int) {
 }
 
 func (m *Model) clampOutput() {
-	start, _ := m.outputRange(len(m.outputRows()))
+	start, _ := m.outputRange(len(m.outputLayout()))
 	m.viewport.top = start
 }
 
 func (m *Model) scrollOutput(delta int) {
-	total := len(m.outputRows())
+	total := len(m.outputLayout())
 	start, _ := m.outputRange(total)
 	bottom := max(0, total-m.outputCapacity(total))
 	m.viewport.top = min(bottom, max(0, start+delta))

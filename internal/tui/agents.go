@@ -25,6 +25,8 @@ func (m *Model) routeAgentEvent(event taskEvent) bool {
 		return false
 	}
 	agent := m.agentView(event.AgentInstanceID, event.AgentName)
+	agent.forkReadingState()
+	before := agent.selectionLayout()
 	// Clear routing metadata before handing content to the shared conversation view.
 	content := event
 	content.AgentName, content.AgentInstanceID, content.ParentAgentInstanceID = "", "", ""
@@ -36,12 +38,9 @@ func (m *Model) routeAgentEvent(event taskEvent) bool {
 			agent.connection = safeRemote(lifecycle.Status)
 		}
 	} else {
-		before := agent.render()
 		agent.applyEvent(content)
-		if before != agent.render() {
-			agent.selection = textSelection{}
-		}
 	}
+	agent.clearChangedSelection(before)
 	m.agents[event.AgentInstanceID] = agent
 	return true
 }

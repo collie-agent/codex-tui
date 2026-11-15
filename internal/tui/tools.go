@@ -129,7 +129,7 @@ func renderToolContent(raw json.RawMessage) string {
 }
 
 // Rendering and hit testing share physical rows, including Unicode wrapping.
-func (m Model) outputLayout() []outputRow {
+func (m Model) buildOutputLayout() []outputRow {
 	var rows []outputRow
 	// Logical lines and byte offsets remain stable when terminal width changes.
 	block := 0
@@ -237,8 +237,8 @@ func (m Model) outputLayout() []outputRow {
 		}
 		if item.region == nil {
 			// Use the rendered rows for display, scrolling, hit testing and copy.
-			for _, logical := range strings.Split(renderMarkdown(m.responses[item.response], m.contentWidth()), "\n") {
-				for _, line := range strings.Split(ansi.Hardwrap(logical, max(1, m.contentWidth()), true), "\n") {
+			for _, logical := range m.responseLayout(item.response) {
+				for _, line := range logical {
 					rows = append(rows, outputRow{text: line, block: block, prompt: prompt, runBlock: runBlock})
 				}
 				block++
