@@ -67,6 +67,19 @@ func (m *Model) applyEvent(event taskEvent) {
 				m.conversationConfirmed = true
 			}
 		}
+	case "assistant_delta":
+		if err := json.Unmarshal([]byte(event.Delta), &delta); err != nil {
+			m.connection = "Connection error: invalid assistant Delta"
+			m.Close()
+			return
+		}
+		if delta.Text == "" {
+			return
+		}
+		// Process text is committed as a whole and is never part of answer rollback.
+		// Keep the next answer separate and suppress the legacy text duplicate.
+		m.appendResponse(delta.Text)
+		m.streaming, m.textInterrupted = true, true
 	case "answer_delta":
 		if err := json.Unmarshal([]byte(event.Delta), &delta); err != nil {
 			m.connection = "Connection error: invalid answer Delta"
@@ -76,7 +89,7 @@ func (m *Model) applyEvent(event taskEvent) {
 		if delta.Text == "" {
 			return
 		}
-		// Answer deltas are decoded by the server.
+		// Both event names carry decoded text and share streaming/rollback state.
 		if m.attemptEnded {
 			m.attemptChunks = nil
 			m.attemptEnded = false

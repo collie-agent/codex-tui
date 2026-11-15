@@ -301,3 +301,14 @@ func TestApplyPatchShowsFilesAndPatchDetails(t *testing.T) {
 		t.Fatalf("missing patch details: %s", visible(m))
 	}
 }
+
+func TestApplyPatchDetailsShowRawPatchLines(t *testing.T) {
+	m, _ := toolModel(t, toolFrame("tool_call", `{"call_id":"a","name":"apply_patch","arguments":{"patch":"*** Begin Patch\n*** Update File: a.txt\n@@ hug\n-old\n+new\n*** End Patch"}}`))
+	m = clickTool(t, m, "+ expand")
+	view := visible(m)
+	for _, want := range []string{"*** Update File: a.txt", "@@ hug", "-old", "+new"} {
+		if strings.Count(view, want) != 1 {
+			t.Fatalf("patch line %q rendered %d times: %s", want, strings.Count(view, want), view)
+		}
+	}
+}

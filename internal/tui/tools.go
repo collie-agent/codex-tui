@@ -149,6 +149,27 @@ func (m Model) outputLayout() []outputRow {
 		return wrapped
 	}
 	appendText := func(text string) { rows = append(rows, wrap(text)...) }
+	appendArguments := func(tool *toolOutput) {
+		if tool.arguments == "" {
+			return
+		}
+		if tool.name == "apply_patch" {
+			var args map[string]json.RawMessage
+			var patch string
+			if json.Unmarshal([]byte(tool.arguments), &args) == nil {
+				for _, key := range []string{"patch", "input"} {
+					if json.Unmarshal(args[key], &patch) == nil {
+						break
+					}
+				}
+			}
+			if patch != "" {
+				appendText(patch)
+				return
+			}
+		}
+		appendText(tool.arguments)
+	}
 	appendToolText := func(text, prefix, color string) {
 		for _, line := range wrap(text) {
 			// Offsets refer to the unstyled text, keeping wrapping and hit testing
@@ -192,7 +213,13 @@ func (m Model) outputLayout() []outputRow {
 			continue
 		}
 		if item.region == nil {
-			appendText(m.responses[item.response])
+			// Use the rendered rows for display, scrolling, hit testing and copy.
+			for _, logical := range strings.Split(renderMarkdown(m.responses[item.response], m.contentWidth()), "\n") {
+				for _, line := range strings.Split(ansi.Hardwrap(logical, max(1, m.contentWidth()), true), "\n") {
+					rows = append(rows, outputRow{text: line, block: block, prompt: prompt, runBlock: runBlock})
+				}
+				block++
+			}
 			continue
 		}
 		region := item.region
@@ -207,20 +234,28 @@ func (m Model) outputLayout() []outputRow {
 		if region.expanded {
 			for _, tool := range region.calls {
 				name := "● " + safeRemote(tool.name)
-				appendToolText(name+toolStatusLabel(tool.status), name, actionBlue)
-				if tool.arguments != "" {
-					appendText(tool.arguments)
+				color := actionBlue
+				if isCommandTool(tool.name) {
+					color = commandGreen
 				}
+				appendToolText(name+toolStatusLabel(tool.status), name, color)
+				appendArguments(tool)
 				if len(tool.results) > 0 {
 					appendText(strings.Join(tool.results, "\n"))
 				}
 			}
 			continue
 		}
+		// Ungrouped tools render one line per call; the rest stay grouped by name.
+		var ungrouped []*toolOutput
 		var names []string
 		groups := make(map[string][]string)
 		readPaths := make(map[string]int)
 		for _, tool := range region.calls {
+			if tool.name == "apply_patch" || isCommandTool(tool.name) {
+				ungrouped = append(ungrouped, tool)
+				continue
+			}
 			if _, ok := groups[tool.name]; !ok {
 				names = append(names, tool.name)
 			}
@@ -248,18 +283,34 @@ func (m Model) outputLayout() []outputRow {
 
 			groups[tool.name] = append(groups[tool.name], summary)
 		}
+		for _, tool := range ungrouped {
+			name := safeRemote(tool.name)
+			color := actionBlue
+			if isCommandTool(tool.name) {
+				color = commandGreen
+			}
+			summary := strings.ReplaceAll(callSummary(tool.name, tool.arguments), "\n", `\n`)
+			summary += toolStatusLabel(tool.status)
+			appendToolText(name+" "+summary, name, color)
+		}
 		for _, name := range names {
 			label := strings.ReplaceAll(safeRemote(name), "\n", `\n`)
 			color := actionBlue
-			if name == "shell" || name == "exec_command" || name == "run_command" || name == "bash" {
-				color = commandGreen
-			}
 			appendToolText(label+" "+strings.Join(groups[name], ", "), label, color)
 		}
 	}
 
 	return rows
 }
+
+func isCommandTool(name string) bool {
+	switch name {
+	case "shell", "exec", "exec_command", "run_command", "bash":
+		return true
+	}
+	return false
+}
+
 func callSummary(name, arguments string) string {
 	if name == "apply_patch" {
 		var args map[string]json.RawMessage

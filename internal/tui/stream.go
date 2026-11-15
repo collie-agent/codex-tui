@@ -222,7 +222,7 @@ func (s *subscription) read() error {
 		if event.Type != "task_info" && !json.Valid([]byte(event.Delta)) {
 			return false, fmt.Errorf("invalid event Delta")
 		}
-		if event.Type == "answer_delta" || event.Type == "text" {
+		if event.Type == "assistant_delta" || event.Type == "answer_delta" || event.Type == "text" {
 			var delta struct{ Text string }
 			if err := json.Unmarshal([]byte(event.Delta), &delta); err != nil {
 				return false, fmt.Errorf("invalid text Delta: %w", err)

@@ -64,6 +64,10 @@ go run . --conv-id=YOUR_CONVERSATION_ID
 
 点击 `+ expand` 展开工具调用区，查看每次调用的参数、执行状态和结果；点击 `− collapse` 收起明细。
 
+折叠视图中，`apply_patch` 以及 `shell`、`exec`、`exec_command`、`run_command`、`bash` 等命令类工具按调用逐条列出（不按名称合并），命令类工具名称以绿色标识，便于快速识别代码修改与执行操作。
+
+`apply_patch` 没有单独的配色主题，展开后按 diff 风格逐行着色：`*** ` 文件头和 `diff --git ` 为蓝色，`@@` 区块头为灰色，`+` 新增行为绿色，`-` 删除行为红色，其余上下文行为默认前景色。若参数中取不到 `patch` / `input` 字段的补丁文本，则回退为显示格式化后的参数 JSON。
+
 使用鼠标滚轮或 **PgUp / PgDn** 阅读输出，滚动后暂停自动跟随。点击返回底部按钮恢复跟随。任务目标滚出可视区域后，会显示在顶部的灰色固定栏中；点击它可跳回原始目标，拖动则可选中文本。
 
 ### 子 Agent 视图
@@ -120,4 +124,14 @@ go run . --conv-id=YOUR_CONVERSATION_ID
 ```sh
 go test ./...
 go vet ./...
+```
+
+也可以使用仓库根目录的 Makefile：
+
+```sh
+make build   # 构建带 -s -w -trimpath 的发布版二进制到 bin/codex-tui
+make test    # 运行全部测试
+make vet     # 运行静态检查
+make check   # vet + test
+make run     # 直接从源码运行
 ```
