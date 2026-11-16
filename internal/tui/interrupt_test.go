@@ -86,7 +86,7 @@ func TestInterruptAndContinueConversation(t *testing.T) {
 	model, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model, _ = model.Update(receive(t, cmd))
 	body := <-requests
-	if len(body) != 2 || body["input"] != "next draft" || body["conv_id"] != "conv-1" {
+	if len(body) != 3 || body["input"] != "next draft" || body["conv_id"] != "conv-1" {
 		t.Fatalf("continuation: %#v", body)
 	}
 }
@@ -412,7 +412,7 @@ func TestTerminalWinsOverLateInterruptionResponse(t *testing.T) {
 					if stage == "running" {
 						model, cmd = model.Update(receive(t, create))
 						body := <-requests
-						if body["conv_id"] != "conv" || body["input"] != "continue" || len(body) != 2 {
+						if body["conv_id"] != "conv" || body["input"] != "continue" || len(body) != 3 {
 							t.Fatalf("continuation: %#v", body)
 						}
 						for i := 0; i < 2; i++ {

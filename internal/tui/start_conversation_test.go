@@ -78,7 +78,7 @@ func TestSpecifiedConversationLoadsRunsAndContinues(t *testing.T) {
 		model, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 		model, cmd = model.Update(receive(t, cmd))
 		body := <-requests
-		if len(body) != 2 || body["conv_id"] != "existing" || body["input"] != input {
+		if len(body) != 3 || body["conv_id"] != "existing" || body["input"] != input || body["workspace"] != "/work" {
 			t.Fatalf("specified conversation request: %#v", body)
 		}
 		for range 3 {
@@ -214,7 +214,7 @@ func TestEmptySpecifiedConversationStartsNewConversation(t *testing.T) {
 	model, _ = model.Update(tea.PasteMsg{Content: "new"})
 	model, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model, _ = model.Update(receive(t, cmd))
-	if body := <-requests; len(body) != 1 || body["input"] != "new" {
+	if body := <-requests; len(body) != 2 || body["input"] != "new" {
 		t.Fatalf("empty conversation did not omit conv_id: %#v", body)
 	}
 }

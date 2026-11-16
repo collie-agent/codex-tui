@@ -49,9 +49,10 @@ func (m Model) submitTask() (tea.Model, tea.Cmd) {
 		// HTTP uses conv_id; ConvId belongs to the server's internal queue protocol.
 		// Sending the queue field here silently creates a different conversation.
 		body, _ := json.Marshal(struct {
-			Input  string `json:"input"`
-			ConvID string `json:"conv_id,omitempty"`
-		}{pending.input, m.conversationID})
+			Input     string `json:"input"`
+			ConvID    string `json:"conv_id,omitempty"`
+			Workspace string `json:"workspace"`
+		}{pending.input, m.conversationID, m.workspace})
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, options.ServerURL+"/tasks", bytes.NewReader(body))
 		if err != nil {
 			return createMessage{source: pending, err: err}

@@ -11,22 +11,24 @@ import (
 )
 
 func TestCreatePreservesDraftAndRequiresCompletion(t *testing.T) {
-	var input string
+	var input, workspace string
 	posts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		posts++
 		var body struct {
-			Input string `json:"input"`
+			Input     string `json:"input"`
+			Workspace string `json:"workspace"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
 		input = body.Input
+		workspace = body.Workspace
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"task_id":"created"}`))
 	}))
 	defer server.Close()
-	m := NewWithTask("", TaskOptions{ServerURL: server.URL})
+	m := NewWithTask("/workspace/项目\n目录", TaskOptions{ServerURL: server.URL})
 	m.input = lineInput{text: "  first  ", caret: 9}
 	next, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = next.(Model)
@@ -43,8 +45,8 @@ func TestCreatePreservesDraftAndRequiresCompletion(t *testing.T) {
 	next, streamCmd := m.Update(cmd())
 	m = next.(Model)
 	defer m.Close()
-	if input != "  first  " || posts != 1 || streamCmd == nil {
-		t.Fatalf("POST input=%q posts=%d", input, posts)
+	if input != "  first  " || workspace != "/workspace/项目\n目录" || posts != 1 || streamCmd == nil {
+		t.Fatalf("POST input=%q workspace=%q posts=%d", input, workspace, posts)
 	}
 	if m.input.text != "next draft" {
 		t.Fatal("draft overwritten")

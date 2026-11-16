@@ -100,7 +100,7 @@ func TestResumedConversationDeduplicatesAndRequiresNewTaskConfirmation(t *testin
 	if first, second := <-headers, <-headers; first != "" || second == "" || !strings.Contains(answer, `"ID":"`+second+`"`) {
 		t.Fatalf("incorrect resume cursors: %q, %q", first, second)
 	}
-	if body := <-requests; len(body) != 1 || body["input"] != "first" {
+	if body := <-requests; len(body) != 2 || body["input"] != "first" {
 		t.Fatalf("first request: %#v", body)
 	}
 	model, _ = model.Update(tea.PasteMsg{Content: "next"})

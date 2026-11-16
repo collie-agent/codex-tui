@@ -34,6 +34,7 @@ type Model struct {
 	modelName             string
 	usage                 tokenUsage
 	directory             string
+	workspace             string
 	width, height         int
 	input                 lineInput
 	selection             textSelection
@@ -74,7 +75,7 @@ func New(directory string) Model {
 			safe.WriteRune(r)
 		}
 	}
-	return Model{directory: safe.String(), outputCache: &outputLayoutCache{}}
+	return Model{directory: safe.String(), workspace: directory, outputCache: &outputLayoutCache{}}
 }
 func (m Model) Init() tea.Cmd {
 	if m.history != nil {

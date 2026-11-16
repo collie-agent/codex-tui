@@ -39,7 +39,7 @@ func TestContinuousTasksShareConversation(t *testing.T) {
 	model, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model, cmd = model.Update(receive(t, cmd))
 	body := <-requests
-	if len(body) != 1 || body["input"] != "  first  " {
+	if len(body) != 2 || body["input"] != "  first  " {
 		t.Fatalf("first request: %#v", body)
 	}
 	for i := 0; i < 3; i++ {
@@ -56,7 +56,7 @@ func TestContinuousTasksShareConversation(t *testing.T) {
 	model, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model, cmd = model.Update(receive(t, cmd))
 	body = <-requests
-	if len(body) != 2 || body["input"] != "continue" || body["conv_id"] != "conversation-1" {
+	if len(body) != 3 || body["input"] != "continue" || body["conv_id"] != "conversation-1" {
 		t.Fatalf("continuation request: %#v", body)
 	}
 	for i := 0; i < 3; i++ {
