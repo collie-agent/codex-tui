@@ -86,8 +86,8 @@ func (m Model) finishCreation(msg createMessage) (tea.Model, tea.Cmd) {
 		m.interruptState, m.interruptStatus = interruptIdle, ""
 		m.connection = "Create error: " + safeRemote(msg.err.Error()) + " · retry manually"
 		// Keep both the retry input and any draft typed during the failed request.
-		m.input.text = pending.input + m.input.text
-		m.input.caret = len(m.input.text)
+		draft := pending.input + m.input.text
+		m.input = lineInput{text: draft, caret: len(draft)}
 		m.stream = nil
 		return m, nil
 	}

@@ -230,7 +230,7 @@ func (m Model) buildOutputLayout() []outputRow {
 				rows = append(rows, line)
 			}
 			// Saved run metadata follows the task card, outside its background.
-			if before, _, ok := strings.Cut(m.responses[item.response], "\nYou: "); ok {
+			if before, ok := strings.CutSuffix(strings.TrimSuffix(m.responses[item.response], item.prompt), "\nYou: "); ok {
 				appendText(before)
 			}
 			continue

@@ -27,6 +27,7 @@ const (
 type Model struct {
 	streamFrame           *streamFrame
 	outputCache           *outputLayoutCache
+	inputCache            *inputLayoutCache
 	agents                map[string]Model
 	agentOrder            []string
 	activeAgent           string
@@ -75,7 +76,7 @@ func New(directory string) Model {
 			safe.WriteRune(r)
 		}
 	}
-	return Model{directory: safe.String(), workspace: directory, outputCache: &outputLayoutCache{}}
+	return Model{directory: safe.String(), workspace: directory, outputCache: &outputLayoutCache{}, inputCache: &inputLayoutCache{}}
 }
 func (m Model) Init() tea.Cmd {
 	if m.history != nil {
@@ -180,6 +181,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.nextStreamCommand()
 	case tea.WindowSizeMsg:
+		m.input.resetVertical()
+		if m.width != max(0, msg.Width) {
+			m.input.pendingKillEnd = 0
+		}
 		m.selection = textSelection{}
 		oldRows := m.outputLayout()
 		start, _ := m.outputRange(len(oldRows))
@@ -253,7 +258,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() != "ctrl+c" && msg.String() != "enter" && msg.String() != "ctrl+d" {
 			m.selection = textSelection{}
 		}
-		switch msg.String() {
+		key := msg.String()
+		switch key {
 		case "esc":
 			if !m.completed && (m.create != nil || m.stream != nil) {
 				if m.runID == "" {
@@ -279,20 +285,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			return m.submitTask()
-		case "backspace":
-			m.input.backspace()
-		case "delete":
-			m.input.delete()
-		case "left":
-			m.input.caret = m.input.previous()
-		case "right":
-			m.input.caret = m.input.next()
-		case "home":
-			m.input.caret = 0
-		case "end":
-			m.input.caret = len(m.input.text)
+		case "ctrl+a", "ctrl+e", "ctrl+u", "ctrl+k", "up", "down":
+			m.input.navigate(key, m.wrappedInput())
 		default:
-			m.input.insert(msg.Text)
+			m.input.edit(key, msg.Text)
 		}
 	case tea.PasteMsg:
 		m.selection = textSelection{}
@@ -316,10 +312,11 @@ func (m Model) View() tea.View {
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 	if !m.readOnly && m.width > 0 && m.height > 0 {
-		_, x := m.input.display(m.contentWidth())
-		x += m.margin()
+		w := m.wrappedInput()
 		layout := m.layout()
-		view.Cursor = tea.NewCursor(x, layout.inputStart+layout.inputHeight/2)
+		first, _, padding := w.window(layout.inputHeight)
+		x := ansi.StringWidth(w.prefix) + w.column
+		view.Cursor = tea.NewCursor(m.margin()+x, layout.inputStart+padding+w.caretRow-first)
 	}
 	if m.streamFrame != nil {
 		m.streamFrame.view = &view
@@ -335,7 +332,7 @@ type screenLayout struct{ inputStart, inputHeight, statusHeight int }
 
 func (m Model) layout() screenLayout {
 	// Reserve input first, then status; the remaining rows belong to the header.
-	inputHeight := min(3, m.height)
+	inputHeight := min(max(1, m.height/2), len(m.wrappedInput().rows)+2, m.height)
 	statusHeight := min(1, m.height-inputHeight)
 	return screenLayout{m.height - inputHeight - statusHeight, inputHeight, statusHeight}
 }
@@ -426,10 +423,21 @@ func (m Model) contentRows() []string {
 			rows[inputStart-1] = row(strings.Repeat(" ", left)+button, false)
 		}
 	}
+	wrapped := m.wrappedInput()
+	first, end, padding := wrapped.window(inputHeight)
 	for i := 0; i < inputHeight; i++ {
 		text := ""
-		if i == inputHeight/2 {
-			text, _ = m.input.display(m.contentWidth())
+		index := first + i - padding
+		if i >= padding && index < end {
+			r := wrapped.rows[index]
+			prefix := wrapped.prefix
+			if index > 0 {
+				prefix = strings.Repeat(" ", ansi.StringWidth(prefix))
+			}
+			text = prefix + m.input.text[r.start:r.end]
+			if m.input.text == "" {
+				text += "Ask Codex to do anything"
+			}
 			if m.readOnly {
 				text = "Read only · Tab / Shift+Tab to switch agents"
 			}

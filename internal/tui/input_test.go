@@ -1,6 +1,9 @@
 package tui_test
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -71,7 +74,7 @@ func TestInputEditingAndCopyWithoutSelection(t *testing.T) {
 }
 
 func TestDeletesWholeGraphemes(t *testing.T) {
-	for _, character := range []string{"中", "界", "🙂", "e\u0301", "👩‍💻", "🇨🇳"} {
+	for _, character := range []string{"中", "界", "🙂", "e\u0301", "👩‍💻", "🇨🇳", "क्ष"} {
 		t.Run(character, func(t *testing.T) {
 			model := resize(t, tui.New("/workspace"), 40, 10)
 			for _, r := range "A" + character {
@@ -153,4 +156,122 @@ func TestPasteStaysOnOneLine(t *testing.T) {
 		t.Fatalf("paste allowed line breaks or terminal controls: %q", got)
 	}
 	resize(t, model, 80, 12)
+}
+
+func TestNarrowInputShowsWholeGraphemeWhenItFitsTheTerminal(t *testing.T) {
+	model := resize(t, tui.New("/workspace"), 20, 8)
+	model = edit(t, model, tea.PasteMsg{Content: "A👩‍💻"})
+	model = resize(t, model, 2, 2)
+	model = edit(t, model, tea.KeyPressMsg{Code: tea.KeyEnd})
+	if got := inputLine(t, model); got != "" || model.View().Cursor.X != 0 {
+		t.Fatalf("caret after full-width emoji = %+v on %q, want an empty insertion row", model.View().Cursor, got)
+	}
+	model = edit(t, model, tea.KeyPressMsg{Code: tea.KeyLeft})
+	if got := inputLine(t, model); got != "👩‍💻" {
+		t.Fatalf("input at two terminal columns = %q, want the whole emoji", got)
+	}
+	model = resize(t, model, 1, 1)
+	inputLine(t, model)
+	model = resize(t, model, 20, 8)
+	if got := inputLine(t, model); got != "› A👩‍💻" {
+		t.Fatalf("widening changed the draft to %q", got)
+	}
+}
+
+func TestInputAreaGrowsAndShrinksBelowHalfScreenLimit(t *testing.T) {
+	model := resize(t, tui.New("/workspace"), 14, 16)
+	checkFirstLine := func(y int) {
+		t.Helper()
+		rows := strings.Split(ansi.Strip(model.View().Content), "\n")
+		if !strings.HasPrefix(strings.TrimSpace(rows[y]), "› abcdefg") {
+			t.Fatalf("first editing row at y=%d = %q; screen: %q", y, rows[y], rows)
+		}
+	}
+	model = edit(t, model, tea.PasteMsg{Content: "abcdefg"})
+	checkFirstLine(13)
+	model = edit(t, model, tea.PasteMsg{Content: "h"})
+	checkFirstLine(12)
+	model = resize(t, model, 30, 16)
+	checkFirstLine(13)
+	model = resize(t, model, 14, 16)
+	checkFirstLine(12)
+	model = edit(t, model, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	checkFirstLine(13)
+}
+
+func TestWrappedDraftGrowsScrollsAndSubmitsOriginalText(t *testing.T) {
+	requests := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Input string `json:"input"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		requests <- body.Input
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"task_id":"wrapped"}`))
+	}))
+	defer server.Close()
+
+	model := resize(t, tui.NewWithTask("/workspace", tui.TaskOptions{ServerURL: server.URL}), 14, 6)
+	const first = "A中e\u0301👩‍💻B"
+	const second = "甲乙丙C"
+	const third = "中文😀D"
+	model = edit(t, model, tea.KeyPressMsg{Code: 'A', Text: "A"})
+	if got := inputLine(t, model); got != "› A" {
+		t.Fatalf("single row = %q", got)
+	}
+	model = edit(t, model, tea.PasteMsg{Content: strings.TrimPrefix(first, "A") + second})
+	view := model.View()
+	rows := strings.Split(ansi.Strip(view.Content), "\n")
+	if got := strings.TrimSpace(rows[view.Cursor.Y-1]); got != "› "+first {
+		t.Fatalf("first wrapped row = %q", got)
+	}
+	if got := strings.TrimSpace(inputLine(t, model)); got != second || view.Cursor.X != 11 {
+		t.Fatalf("second wrapped row = %q, cursor = %+v", got, view.Cursor)
+	}
+
+	model = edit(t, model, tea.PasteMsg{Content: third})
+	view = model.View()
+	rows = strings.Split(ansi.Strip(view.Content), "\n")
+	if strings.Contains(ansi.Strip(view.Content), first) {
+		t.Fatal("the first row remained visible after reaching the height limit")
+	}
+	if got := strings.TrimSpace(rows[view.Cursor.Y-1]); got != second {
+		t.Fatalf("row above the caret after scrolling = %q", got)
+	}
+	if got := strings.TrimSpace(inputLine(t, model)); got != third {
+		t.Fatalf("third wrapped row = %q", got)
+	}
+	for range 4 {
+		model = edit(t, model, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	}
+	if got := strings.TrimSpace(inputLine(t, model)); got != second {
+		t.Fatalf("deleting the last wrapped row left %q at the caret", got)
+	}
+	if !strings.Contains(ansi.Strip(model.View().Content), first) {
+		t.Fatal("deleting the last wrapped row did not reveal the first row")
+	}
+
+	model = edit(t, model, tea.KeyPressMsg{Code: tea.KeyLeft})
+	model = resize(t, model, 80, 6)
+	if got := inputLine(t, model); got != "› "+first+second || model.View().Cursor.X != 17 {
+		t.Fatalf("widened row = %q, cursor = %+v", got, model.View().Cursor)
+	}
+	model = resize(t, model, 14, 6)
+	model = edit(t, model, tea.KeyPressMsg{Code: '!', Text: "!"})
+	_, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("Enter did not submit the draft")
+	}
+	cmd()
+	select {
+	case got := <-requests:
+		if want := first + "甲乙丙!C"; got != want {
+			t.Fatalf("submitted draft = %q, want %q", got, want)
+		}
+	default:
+		t.Fatal("Enter sent no task request")
+	}
 }
