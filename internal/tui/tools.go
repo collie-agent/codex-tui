@@ -194,10 +194,11 @@ func (m Model) buildOutputLayout() []outputRow {
 		appendText(tool.arguments)
 	}
 	appendToolText := func(text, prefix, color string) {
+		prefixBytes := len(safeRemote(prefix))
 		for _, line := range wrap(text) {
 			// Offsets refer to the unstyled text, keeping wrapping and hit testing
 			// independent of ANSI sequences used by the presentation layer.
-			line.accentEnd = max(0, min(len(line.text), len(prefix)-line.offset))
+			line.accentEnd = max(0, min(len(line.text), prefixBytes-line.offset))
 			line.accentColor = color
 			rows = append(rows, line)
 		}
@@ -256,7 +257,7 @@ func (m Model) buildOutputLayout() []outputRow {
 		}
 		if region.expanded {
 			for _, tool := range region.calls {
-				name := "● " + safeRemote(tool.name)
+				name := "● " + strings.ReplaceAll(tool.name, "\n", `\n`)
 				color := actionBlue
 				if isCommandTool(tool.name) {
 					color = commandGreen
@@ -313,7 +314,7 @@ func (m Model) buildOutputLayout() []outputRow {
 			groups[tool.name] = append(groups[tool.name], summary)
 		}
 		for _, tool := range ungrouped {
-			name := safeRemote(tool.name)
+			name := strings.ReplaceAll(tool.name, "\n", `\n`)
 			color := actionBlue
 			if isCommandTool(tool.name) {
 				color = commandGreen
@@ -323,7 +324,7 @@ func (m Model) buildOutputLayout() []outputRow {
 			appendToolText(name+" "+summary, name, color)
 		}
 		for _, name := range names {
-			label := strings.ReplaceAll(safeRemote(name), "\n", `\n`)
+			label := strings.ReplaceAll(name, "\n", `\n`)
 			color := actionBlue
 			appendToolText(label+" "+strings.Join(groups[name], ", "), label, color)
 		}

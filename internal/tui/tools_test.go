@@ -41,6 +41,22 @@ func toolModel(t *testing.T, frames ...string) (tea.Model, tea.Cmd) {
 
 func visible(m tea.Model) string { return ansi.Strip(m.View().Content) }
 
+func TestDisplayTabsAcrossMessagesAndToolRegions(t *testing.T) {
+	m, _ := toolModel(t,
+		event("text", "中\tanswer"),
+		toolFrame("tool_call", `{"call_id":"a","name":"exec_command","arguments":{"cmd":"a\tb"}}`),
+		toolFrame("tool_result", `{"call_id":"a","result":[{"type":"text","text":"中\tresult\nliteral\\t"}]}`),
+	)
+	view := visible(m)
+	if !strings.Contains(view, "中  answer") || !strings.Contains(view, "exec_command a  b") || strings.Contains(view, "中  result") {
+		t.Fatalf("unexpected collapsed view:\n%s", view)
+	}
+	view = visible(clickTool(t, m, "+ expand"))
+	if !strings.Contains(view, "中  result") || !strings.Contains(view, `literal\t`) {
+		t.Fatalf("unexpected expanded view:\n%s", view)
+	}
+}
+
 func clickTool(t *testing.T, m tea.Model, label string) tea.Model {
 	t.Helper()
 	for y, row := range strings.Split(visible(m), "\n") {

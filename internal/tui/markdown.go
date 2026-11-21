@@ -14,7 +14,7 @@ import (
 
 func renderMarkdown(source string, width int) string {
 	// Sanitize remote text before rendering; generated ANSI belongs to Glamour.
-	source = safeRemote(source)
+	source = escapeRemoteControls(source)
 	// Plain responses retain their original line boundaries and spacing.
 	document := goldmark.DefaultParser().Parse(text.NewReader([]byte(source)))
 	plain := true
@@ -29,7 +29,7 @@ func renderMarkdown(source string, width int) string {
 		return ast.WalkContinue, nil
 	})
 	if plain {
-		return source
+		return expandDisplayTabs(source)
 	}
 	style := githubMarkdownStyle()
 	renderer, err := glamour.NewTermRenderer(
@@ -37,13 +37,13 @@ func renderMarkdown(source string, width int) string {
 		glamour.WithStyles(style),
 		glamour.WithWordWrap(max(1, width)))
 	if err != nil {
-		return source
+		return expandDisplayTabs(source)
 	}
 	rendered, err := renderer.Render(source)
 	if err != nil {
-		return source
+		return expandDisplayTabs(source)
 	}
-	return strings.Trim(rendered, "\n")
+	return expandDisplayTabs(strings.Trim(rendered, "\n"))
 }
 
 // GitHub's restrained dark palette keeps emphasis on content. Terminal headings

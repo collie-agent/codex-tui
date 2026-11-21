@@ -7,15 +7,21 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 type answerChunk struct{ index, bytes int }
 
-// Remote controls are escaped before any styling, wrapping or clipboard access.
 func safeRemote(text string) string {
+	return expandDisplayTabs(escapeRemoteControls(text))
+}
+
+// Preserve line breaks and tabs for layout while escaping other remote controls.
+func escapeRemoteControls(text string) string {
 	var out strings.Builder
 	for _, r := range text {
-		if r != '\n' && (unicode.IsControl(r) || r == '\u2028' || r == '\u2029') {
+		if r != '\n' && r != '\t' && (unicode.IsControl(r) || r == '\u2028' || r == '\u2029') {
 			q := strconv.QuoteRune(r)
 			out.WriteString(q[1 : len(q)-1])
 		} else {
@@ -23,6 +29,34 @@ func safeRemote(text string) string {
 		}
 	}
 	return out.String()
+}
+
+func expandDisplayTabs(text string) string {
+	if !strings.ContainsRune(text, '\t') {
+		return text
+	}
+	const tabWidth = 4
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		if !strings.ContainsRune(line, '\t') {
+			continue
+		}
+		var expanded strings.Builder
+		column := 0
+		for segment, rest, found := strings.Cut(line, "\t"); ; segment, rest, found = strings.Cut(rest, "\t") {
+			expanded.WriteString(segment)
+			if !found {
+				break
+			}
+			// Tabs follow terminal columns, including wide and styled text.
+			column += ansi.StringWidth(segment)
+			spaces := tabWidth - column%tabWidth
+			expanded.WriteString(strings.Repeat(" ", spaces))
+			column += spaces
+		}
+		lines[i] = expanded.String()
+	}
+	return strings.Join(lines, "\n")
 }
 func (m *Model) applyEvent(event taskEvent) {
 	if m.routeAgentEvent(event) {
